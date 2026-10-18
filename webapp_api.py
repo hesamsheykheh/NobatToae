@@ -8,11 +8,30 @@
 import hashlib
 import hmac
 import json
+import os
 import time
 import csv
 import io
 from datetime import datetime, timedelta
 from urllib.parse import parse_qsl
+
+# مسیر مطلق پوشه‌ی این فایل، تا هر جا که سرور اجرا بشه (Render، Replit، ...) فرقی نکنه.
+# چون گاهی هنگام آپلود دستی، ساختار پوشه‌ها به‌هم می‌ریزه، چند مسیر محتمل رو چک می‌کنیم:
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_CANDIDATE_PATHS = [
+    os.path.join(BASE_DIR, "webapp", "index.html"),  # ساختار استاندارد
+    os.path.join(BASE_DIR, "index.html"),             # اگه فایل مستقیم کنار بقیه فایل‌ها باشه
+]
+
+
+def _find_index_html():
+    for p in _CANDIDATE_PATHS:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+INDEX_HTML_PATH = _find_index_html()
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -79,7 +98,13 @@ def rows(rs):
 
 @app.get("/")
 def serve_index():
-    return FileResponse("webapp/index.html")
+    path = _find_index_html()
+    if not path:
+        raise HTTPException(
+            500,
+            "فایل index.html پیدا نشد. این مسیرها بررسی شدن:\n" + "\n".join(_CANDIDATE_PATHS),
+        )
+    return FileResponse(path)
 
 
 @app.get("/api/config")
