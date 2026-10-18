@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>رزرو نوبت</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+ :root{--bg:#0f1115;--card:#1a1d24;--card2:#22262f;--accent:#7c5cff;--accent2:#5ee6c2;--text:#f2f2f5;--muted:#9397a3;--border:#2a2e38;--danger:#ff5c7a;
+   box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);}
+ @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f5f6f8;--card:#fff;--card2:#f0f1f4;--text:#1a1d24;--muted:#6b7080;--border:#e4e6eb;}}
+ *{box-sizing:border-box}html,body{height:100%;margin:0}
+ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Tahoma,sans-serif;display:flex;justify-content:center}
+ .app{width:100%;max-width:430px;min-height:100%;display:flex;flex-direction:column}
+ header{padding:14px 16px 10px;position:sticky;top:0;background:var(--bg);padding-top:calc(14px + env(safe-area-inset-top,0px));z-index:5;border-bottom:1px solid var(--border)}
+ header h1{font-size:16px;margin:0 0 2px}header p{margin:0;color:var(--muted);font-size:12.5px}
+ main{flex:1;padding:14px;overflow-y:auto}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:9px;cursor:pointer;transition:.15s}
+ .card:active{transform:scale(.98)}.card.sel{border-color:var(--accent);background:var(--card2)}
+ .row{display:flex;justify-content:space-between;align-items:center}
+ .title{font-size:14.5px;font-weight:600}.sub{font-size:12px;color:var(--muted);margin-top:3px}
+ .price{color:var(--accent2);font-size:12.5px;font-weight:600;white-space:nowrap}
+ .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+ .slot{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 0;text-align:center;font-size:13px;cursor:pointer}
+ .slot.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+ .srow{display:flex;justify-content:space-between;padding:8px 0;font-size:13px;border-bottom:1px solid var(--border)}.srow:last-child{border:none}.srow b{font-weight:600}
+ footer{padding:11px 16px calc(13px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0}
+ .btn{width:100%;padding:12px;border:none;border-radius:12px;font-size:14.5px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer;margin-top:6px}
+ .btn:first-child{margin-top:0}.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+ .btn.sm{padding:7px 10px;width:auto;font-size:12px;margin:0}
+ .empty{color:var(--muted);font-size:13px;text-align:center;padding:36px 10px}
+ .success{text-align:center;padding:46px 10px}.success .emoji{font-size:48px;margin-bottom:8px}
+ .menu2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+ .menu2 .mcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 10px;text-align:center;cursor:pointer}
+ .menu2 .mcard .ic{font-size:22px;margin-bottom:6px}.menu2 .mcard .lb{font-size:12px;color:var(--text)}
+ .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:9px}
+ .stat .v{font-size:19px;font-weight:700}.stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+ .iconbtn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px}
+ .link-box{background:var(--card2);border:1px dashed var(--border);border-radius:10px;padding:10px;font-size:12px;word-break:break-all;color:var(--accent2);margin-bottom:8px}
+ .qr-box{background:#fff;border-radius:14px;padding:16px;display:flex;justify-content:center;margin-bottom:12px}
+ .loading,.err{text-align:center;padding:50px 16px;color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1 id="hT">در حال بارگذاری...</h1><p id="hS"></p></header>
+  <main id="main"><div class="loading">⏳ در حال اتصال...</div></main>
+  <footer id="foot"></footer>
+</div>
+<script>
+const tg = window.Telegram ? window.Telegram.WebApp : null;
+if(tg){ tg.ready(); tg.expand(); }
+const initData = tg ? tg.initData : "";
+const tgUser = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+const params = new URLSearchParams(location.search);
+const qsBiz = params.get('biz');
+const isAdminMode = params.get('admin') === '1';
+
+const main=document.getElementById('main'), foot=document.getElementById('foot'), hT=document.getElementById('hT'), hS=document.getElementById('hS');
+
+async function api(path, opts={}){
+  const res = await fetch(path, {
+    ...opts,
+    headers: {'Content-Type':'application/json','X-Telegram-Init-Data':initData, ...(opts.headers||{})},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if(!res.ok){ const e = await res.json().catch(()=>({detail:'خطا'})); throw new Error(e.detail||'خطا'); }
+  return res.status===204?null:res.json();
+}
+
+function el(html){const d=document.createElement('div');d.innerHTML=html.trim();return d.firstChild;}
+function card(title,sub,price,onClick,selected){const d=el(`<div class="card${selected?' sel':''}"><div class="row"><div><div class="title">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>${price!=null?`<div class="price">${price.toLocaleString('fa-IR')} تومان</div>`:''}</div></div>`);if(onClick)d.onclick=onClick;return d;}
+function btn(text,onClick,cls=''){const b=document.createElement('button');b.className='btn '+cls;b.textContent=text;b.onclick=onClick;return b;}
+function back(fn){foot.appendChild(btn('⬅️ بازگشت',fn,'ghost'));}
+function askPrice(current){
+  const wantsPrice = confirm('آیا می‌خواید برای این خدمت قیمت ثابت مشخص کنید؟\n\n✅ تایید = بله، قیمت می‌دم\n❌ لغو = نه، قیمت در جلسه مشخص می‌شه (مثلاً به‌خاطر نوسان نرخ ارز)');
+  if(!wantsPrice) return null;
+  const p = prompt('قیمت (تومان):', current!=null?String(current):'');
+  if(p===null || p.trim()==='') return null;
+  return +p || 0;
+}
+function showError(msg){main.innerHTML=`<div class="err">⚠️ ${msg}</div>`;foot.innerHTML='';}
+
+// ================= نمای مشتری =================
+let biz=null, cs={step:1};
+
+async function startCustomer(slug){
+  try{ biz = await api('/api/business/by-slug/'+slug); }
+  catch(e){ showError('این لینک رزرو معتبر نیست.'); return; }
+  cs={step:1}; renderCustomer();
+}
+
+async function renderCustomer(){
+  const subs={1:'خدمت مورد نظر رو انتخاب کنید',2:'متخصص رو انتخاب کنید',3:'تاریخ رو انتخاب کنید',4:'ساعت خالی رو انتخاب کنید',5:'بررسی و تایید نهایی',6:''};
+  hT.textContent=biz.name; hS.textContent=subs[cs.step]||'';
+  main.innerHTML='';foot.innerHTML='';
+  if(cs.step===1){
+    main.innerHTML='<div class="loading">⏳</div>';
+    const services = await api(`/api/business/${biz.id}/services`);
+    main.innerHTML='';
+    if(!services.length){main.appendChild(el('<div class="empty">خدمتی تعریف نشده</div>'));return;}
+    services.forEach(s=>{
+      const sub = s.duration_minutes+' دقیقه'+(s.price==null?' · 💬 قیمت در جلسه مشخص می‌شود':'');
+      main.appendChild(card(s.name,sub,s.price,()=>{cs.service=s;cs.step=2;renderCustomer();}));
+    });
+  }
+  else if(cs.step===2){
+    main.innerHTML='<div class="loading">⏳</div>';
+    const staffList = await api(`/api/services/${cs.service.id}/staff`);
+    main.innerHTML='';
+    staffList.forEach(s=>main.appendChild(card(s.name,'متخصص',null,()=>{cs.staff=s;cs.step=3;renderCustomer();})));
+    back(()=>{cs.step=1;renderCustomer();});
+  }
+  else if(cs.step===3){
+    const dates=[]; const today=new Date();
+    for(let i=0;i<10;i++){const d=new Date(today); d.setDate(d.getDate()+i); dates.push(d.toISOString().slice(0,10));}
+    dates.forEach(d=>main.appendChild(card(d,null,null,()=>{cs.date=d;cs.step=4;renderCustomer();})));
+    back(()=>{cs.step=2;renderCustomer();});
+  }
+  else if(cs.step===4){
+    main.innerHTML='<div class="loading">⏳</div>';
+    const slots = await api(`/api/availability?business_id=${biz.id}&staff_id=${cs.staff.id}&date=${cs.date}&duration=${cs.service.duration_minutes}`);
+    main.innerHTML='';
+    if(!slots.length){main.appendChild(el('<div class="empty">ساعت خالی در این روز نیست؛ روز دیگه رو امتحان کنید</div>'));back(()=>{cs.step=3;renderCustomer();});return;}
+    const w=el('<div class="grid3"></div>');
+    slots.forEach(t=>{const s=el(`<div class="slot">${t}</div>`);s.onclick=()=>{cs.time=t;cs.step=5;renderCustomer();};w.appendChild(s);});
+    main.appendChild(w); back(()=>{cs.step=3;renderCustomer();});
+  }
+  else if(cs.step===5){
+    const priceRow = cs.service.price!=null
+      ? `<div class="srow"><span>💰 مبلغ</span><b>${cs.service.price.toLocaleString('fa-IR')} تومان</b></div>`
+      : `<div class="srow"><span>💰 مبلغ</span><b style="color:var(--muted);font-weight:500">در جلسه مشخص می‌شود</b></div>`;
+    main.appendChild(el(`<div class="card"><div class="srow"><span>💇 خدمت</span><b>${cs.service.name}</b></div><div class="srow"><span>👤 متخصص</span><b>${cs.staff.name}</b></div><div class="srow"><span>📅 تاریخ</span><b>${cs.date}</b></div><div class="srow"><span>🕐 ساعت</span><b>${cs.time}</b></div>${priceRow}</div>`));
+    const phoneInput=el('<input type="tel" placeholder="شماره تماس" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-top:4px">');
+    main.appendChild(phoneInput);
+    foot.appendChild(btn('✅ تایید نهایی رزرو',async()=>{
+      if(!phoneInput.value.trim()){alert('شماره تماس رو وارد کنید');return;}
+      try{
+        await api('/api/appointments',{method:'POST',body:{business_id:biz.id,service_id:cs.service.id,staff_id:cs.staff.id,date:cs.date,time:cs.time,phone:phoneInput.value.trim(),name:tgUser?tgUser.first_name:''}});
+        cs.step=6; renderCustomer();
+      }catch(e){ alert('❌ '+e.message); }
+    }));
+    back(()=>{cs.step=4;renderCustomer();});
+  }
+  else if(cs.step===6){
+    main.innerHTML=`<div class="success"><div class="emoji">🎉</div><h2>نوبت شما ثبت شد!</h2><p style="color:var(--muted);font-size:13px">${cs.service.name} با ${cs.staff.name}<br>${cs.date} ساعت ${cs.time}</p></div>`;
+    foot.appendChild(btn('بازگشت به منو',()=>{cs={step:1};renderCustomer();}));
+    if(tg) tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
+  }
+}
+
+// ================= پنل مدیریت =================
+const ADM=[
+ {k:'dash',ic:'📊',t:'داشبورد'},{k:'today',ic:'📅',t:'نوبت‌های امروز'},{k:'upcoming',ic:'📋',t:'نوبت‌های آینده'},
+ {k:'services',ic:'💼',t:'مدیریت خدمات'},{k:'staff',ic:'👥',t:'مدیریت متخصص‌ها'},
+ {k:'schedule',ic:'⏰',t:'برنامه کاری'},{k:'holidays',ic:'🏖',t:'تعطیلات'},{k:'discounts',ic:'🎟',t:'کدهای تخفیف'},
+ {k:'reviews',ic:'⭐',t:'نظرات مشتریان'},{k:'revenue',ic:'📈',t:'گزارش درآمد'},{k:'csv',ic:'📄',t:'خروجی CSV'},
+ {k:'admins',ic:'👑',t:'مدیریت ادمین‌ها'},{k:'feedback',ic:'💬',t:'بازخورد کاربران'},{k:'link',ic:'🔗',t:'لینک رزرو'},
+];
+let adminBizId=null, aScreen='menu';
+
+async function startAdmin(businessId){
+  adminBizId = businessId;
+  try{ await api(`/api/admin/${adminBizId}/dashboard`); }
+  catch(e){ showError('شما ادمین این کسب‌وکار نیستید.'); return; }
+  aScreen='menu'; renderAdmin();
+}
+
+async function renderAdmin(){
+  hT.textContent='پنل مدیریت'; hS.textContent=aScreen==='menu'?'یک بخش رو انتخاب کنید':(ADM.find(a=>a.k===aScreen)||{}).t||'';
+  main.innerHTML='<div class="loading">⏳</div>';foot.innerHTML='';
+  if(aScreen==='menu'){
+    main.innerHTML='';
+    const g=el('<div class="menu2"></div>');
+    ADM.forEach(a=>{const c=el(`<div class="mcard"><div class="ic">${a.ic}</div><div class="lb">${a.t}</div></div>`);c.onclick=()=>{aScreen=a.k;renderAdmin();};g.appendChild(c);});
+    main.appendChild(g);
+    return;
+  }
+  back(()=>{aScreen='menu';renderAdmin();});
+  try{
+    if(aScreen==='dash'){
+      const d = await api(`/api/admin/${adminBizId}/dashboard`);
+      main.innerHTML='';
+      main.appendChild(el(`<div class="stat"><div class="v">${d.today_count}</div><div class="l">نوبت امروز</div></div>`));
+      main.appendChild(el(`<div class="stat"><div class="v">${d.upcoming_count}</div><div class="l">نوبت‌های آینده</div></div>`));
+      main.appendChild(el(`<div class="stat"><div class="v">${d.month_revenue.toLocaleString('fa-IR')} تومان</div><div class="l">درآمد این ماه (${d.month_count} نوبت)</div></div>`));
+      main.appendChild(el(`<div class="stat"><div class="v">⭐ ${d.avg_rating?d.avg_rating.toFixed(1):'-'} / ۵</div><div class="l">${d.review_count} نظر</div></div>`));
+    }
+    else if(aScreen==='today'){
+      const list = await api(`/api/admin/${adminBizId}/appointments/today`);
+      main.innerHTML='';
+      list.length? list.forEach(a=>main.appendChild(card(a.start_time+' - '+a.service_name,a.staff_name+' | '+a.user_name+' | '+a.user_phone))) : main.appendChild(el('<div class="empty">امروز نوبتی نیست</div>'));
+    }
+    else if(aScreen==='upcoming'){
+      const list = await api(`/api/admin/${adminBizId}/appointments/upcoming`);
+      main.innerHTML='';
+      if(!list.length){main.appendChild(el('<div class="empty">نوبت آینده‌ای نیست</div>'));return;}
+      list.forEach(a=>{
+        const c=el(`<div class="card"><div class="row"><div><div class="title">${a.date} - ${a.start_time}</div><div class="sub">${a.service_name} | ${a.staff_name}</div></div><button class="iconbtn">🗑</button></div></div>`);
+        c.querySelector('button').onclick=async(e)=>{e.stopPropagation();await api(`/api/admin/${adminBizId}/appointments/${a.id}/cancel`,{method:'POST'});renderAdmin();};
+        main.appendChild(c);
+      });
+    }
+    else if(aScreen==='services'){
+      const list = await api(`/api/admin/${adminBizId}/services`);
+      main.innerHTML='';
+      list.forEach(s=>{
+        const sub = s.duration_minutes+' دقیقه'+(s.active?'':' (غیرفعال)')+(s.price==null?' · بدون قیمت ثابت':'');
+        main.appendChild(card(s.name,sub,s.price,async()=>{
+          const name=prompt('نام خدمت:',s.name); if(name===null)return;
+          const dur=prompt('مدت (دقیقه):',s.duration_minutes); if(dur===null)return;
+          const price=askPrice(s.price); if(price===undefined)return;
+          await api(`/api/admin/services/${s.id}`,{method:'PATCH',body:{name,duration_minutes:+dur,price}}); renderAdmin();
+        }));
+      });
+      foot.appendChild(btn('➕ افزودن خدمت',async()=>{
+        const name=prompt('نام خدمت:'); if(!name)return;
+        const dur=prompt('مدت (دقیقه):','30');
+        const price=askPrice(null); if(price===undefined)return;
+        await api(`/api/admin/${adminBizId}/services`,{method:'POST',body:{name,duration_minutes:+dur||30,price}}); renderAdmin();
+      }));
+    }
+    else if(aScreen==='staff'){
+      const list = await api(`/api/admin/${adminBizId}/staff`);
+      main.innerHTML='';
+      list.forEach(s=>main.appendChild(card(s.name+(s.active?'':' (غیرفعال)'),null,null,async()=>{
+        if(confirm(`«${s.name}» غیرفعال/فعال بشه؟`)){await api(`/api/admin/staff/${s.id}`,{method:'DELETE'});renderAdmin();}
+      })));
+      foot.appendChild(btn('➕ افزودن متخصص',async()=>{const n=prompt('نام متخصص:');if(n){await api(`/api/admin/${adminBizId}/staff`,{method:'POST',body:{name:n}});renderAdmin();}}));
+    }
+    else if(aScreen==='schedule'){
+      const list = await api(`/api/admin/${adminBizId}/schedule`);
+      const WD=['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه'];
+      const byDay={}; list.forEach(r=>byDay[r.weekday]=r);
+      main.innerHTML='';
+      main.appendChild(el('<div class="sub" style="margin-bottom:8px">برای تغییر هر روز روش بزنید</div>'));
+      WD.forEach((name,i)=>{
+        const r=byDay[i]; const closed = r ? !!r.is_closed : false;
+        const sub = closed ? 'تعطیل' : (r ? r.start_time+' تا '+r.end_time : 'پیش‌فرض (۹ تا ۲۰)');
+        main.appendChild(card(name,sub,null,async()=>{
+          if(!r || closed){
+            const start=prompt('ساعت شروع (مثلاً 09:00):','09:00'); if(start===null)return;
+            const end=prompt('ساعت پایان (مثلاً 20:00):','20:00'); if(end===null)return;
+            await api(`/api/admin/${adminBizId}/schedule`,{method:'POST',body:{weekday:i,start_time:start,end_time:end,is_closed:false}});
+          } else {
+            await api(`/api/admin/${adminBizId}/schedule`,{method:'POST',body:{weekday:i,is_closed:true}});
+          }
+          renderAdmin();
+        }));
+      });
+    }
+    else if(aScreen==='holidays'){
+      const list = await api(`/api/admin/${adminBizId}/holidays`);
+      main.innerHTML='';
+      list.length? list.forEach(h=>main.appendChild(el(`<div class="card"><div class="row"><span>${h.date} ${h.reason?'- '+h.reason:''}</span><button class="iconbtn" onclick="fetch('/api/admin/holidays/${h.id}',{method:'DELETE',headers:{'X-Telegram-Init-Data':initData}}).then(()=>renderAdmin())">🗑</button></div></div>`))) : main.appendChild(el('<div class="empty">تعطیلی ثبت نشده</div>'));
+      foot.appendChild(btn('➕ افزودن تعطیلی',async()=>{const d=prompt('تاریخ (مثلاً 2026-10-20):');if(!d)return;const r=prompt('توضیح (اختیاری):','');await api(`/api/admin/${adminBizId}/holidays`,{method:'POST',body:{date:d,reason:r}});renderAdmin();}));
+    }
+    else if(aScreen==='discounts'){
+      const list = await api(`/api/admin/${adminBizId}/discounts`);
+      main.innerHTML='';
+      list.forEach(d=>{const v=d.discount_type==='percent'?d.value+'٪':d.value.toLocaleString('fa-IR')+' ت';main.appendChild(el(`<div class="card"><div class="title">${d.code}</div><div class="sub">تخفیف ${v} | استفاده ${d.used_count}/${d.usage_limit||'∞'}</div></div>`));});
+      foot.appendChild(btn('➕ ساخت کد تخفیف',async()=>{
+        const code=prompt('کد تخفیف:'); if(!code)return;
+        const type=confirm('تخفیف درصدیه؟ (Cancel = مبلغ ثابت)')?'percent':'fixed';
+        const value=prompt('مقدار تخفیف:'); await api(`/api/admin/${adminBizId}/discounts`,{method:'POST',body:{code,discount_type:type,value:+value||0}}); renderAdmin();
+      }));
+    }
+    else if(aScreen==='reviews'){
+      const d = await api(`/api/admin/${adminBizId}/reviews`);
+      main.innerHTML='';
+      main.appendChild(el(`<div class="stat"><div class="v">⭐ ${d.average?d.average.toFixed(1):'-'} / ۵</div><div class="l">${d.count} نظر</div></div>`));
+      d.recent.forEach(r=>main.appendChild(el(`<div class="card"><div class="title">${'⭐'.repeat(r.rating)}</div><div class="sub">${r.comment||''}</div></div>`)));
+    }
+    else if(aScreen==='revenue'){
+      const d = await api(`/api/admin/${adminBizId}/revenue?period=month`);
+      main.innerHTML='';
+      main.appendChild(el(`<div class="stat"><div class="v">${d.summary.revenue.toLocaleString('fa-IR')} تومان</div><div class="l">درآمد این ماه (${d.summary.cnt} نوبت)</div></div>`));
+      d.by_service.forEach(s=>main.appendChild(el(`<div class="srow" style="margin:0 4px"><span>${s.name}</span><b>${s.revenue.toLocaleString('fa-IR')} ت</b></div>`)));
+    }
+    else if(aScreen==='csv'){
+      main.innerHTML='<div class="empty">فایل CSV شامل تمام نوبت‌هاست</div>';
+      foot.appendChild(btn('⬇️ دانلود خروجی CSV',()=>{window.open(`/api/admin/${adminBizId}/export-csv?x=${encodeURIComponent(initData)}`,'_blank');}));
+    }
+    else if(aScreen==='admins'){
+      const d = await api(`/api/admin/${adminBizId}/admins`);
+      main.innerHTML='';
+      d.admins.forEach(a=>main.appendChild(el(`<div class="card"><div class="row"><span>${a.telegram_id===d.owner_id?'👑':'👤'} ${a.telegram_id}</span></div></div>`)));
+      foot.appendChild(btn('🎫 ساخت کد دعوت ادمین',async()=>{const r=await api(`/api/admin/${adminBizId}/admins/invite`,{method:'POST'});alert('کد دعوت: '+r.code+'\nاین کد رو به نفر جدید بدید تا با دستور /claimadmin در ربات استفاده کنه.');}));
+    }
+    else if(aScreen==='link'){
+      const d = await api(`/api/admin/${adminBizId}/dashboard`);
+      const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
+      const link = 'https://t.me/'+cfg.bot_username+'?start='+d.slug;
+      main.innerHTML='';
+      main.appendChild(el('<div class="sub" style="margin-bottom:8px">مشتری‌ها می‌تونن با اسکن این کد یا زدن روی لینک، مستقیم وارد رزرو بشن:</div>'));
+      const qrBox = el('<div class="qr-box"><div id="qrcanvas"></div></div>');
+      main.appendChild(qrBox);
+      main.appendChild(el(`<div class="link-box">${link}</div>`));
+      // ساخت QR Code (اگه به هر دلیلی اسکریپتش لود نشه، بی‌سروصدا فقط لینک متنی می‌مونه)
+      try{ new QRCode(qrBox.querySelector('#qrcanvas'), {text:link, width:160, height:160, colorDark:'#000000', colorLight:'#ffffff'}); }catch(e){ qrBox.remove(); }
+      foot.appendChild(btn('📋 کپی لینک',()=>{try{navigator.clipboard.writeText(link);alert('کپی شد ✅');}catch(e){alert(link);}}));
+      foot.appendChild(btn('⬇️ دانلود تصویر QR',()=>{
+        const img = qrBox.querySelector('img,canvas');
+        if(!img){alert('QR ساخته نشد');return;}
+        const a=document.createElement('a');
+        a.download='qr-'+(d.slug||'link')+'.png';
+        a.href = img.tagName==='CANVAS' ? img.toDataURL('image/png') : img.src;
+        a.click();
+      },'ghost'));
+    }
+    else if(aScreen==='feedback'){
+      const list = await api(`/api/admin/${adminBizId}/feedback`);
+      main.innerHTML='';
+      list.length? list.forEach(f=>main.appendChild(el(`<div class="card"><div class="title">${f.user_name||'-'}</div><div class="sub">${f.text}</div></div>`))) : main.appendChild(el('<div class="empty">بازخوردی ثبت نشده</div>'));
+    }
+  }catch(e){ main.innerHTML=''; main.appendChild(el(`<div class="empty">⚠️ ${e.message}</div>`)); }
+}
+
+// ================= شروع =================
+(async function init(){
+  if(!initData){ showError('این صفحه فقط باید از داخل تلگرام (دکمه داخل ربات) باز بشه.'); return; }
+  if(isAdminMode && qsBiz){ startAdmin(parseInt(qsBiz)); }
+  else if(qsBiz){ startCustomer(qsBiz); }
+  else {
+    main.innerHTML='';
+    main.appendChild(el('<div class="empty">برای رزرو، از لینک اختصاصی یک کسب‌وکار وارد بشید.</div>'));
+    foot.appendChild(btn('➕ ساخت کسب‌وکار من',async()=>{
+      const name=prompt('نام کسب‌وکار جدید:'); if(!name)return;
+      const r = await api('/api/businesses',{method:'POST',body:{name}});
+      const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
+      alert('🎉 ساخته شد! لینک رزرو:\nt.me/'+cfg.bot_username+'?start='+r.slug);
+      startAdmin(r.business_id);
+    }));
+  }
+})();
+</script>
+</body>
+</html>
