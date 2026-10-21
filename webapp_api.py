@@ -118,13 +118,28 @@ def public_config():
 
 class NewBusinessBody(BaseModel):
     name: str
+    category: Optional[str] = None  # صنف انتخاب‌شده (مثل «آرایشگاه زنانه» یا «فروشگاه لباس»)
+    needs_datetime: bool = True  # پیش‌فرض از روی صنف تعیین می‌شه (فروشگاه = False)
 
 
 @app.post("/api/businesses")
 def create_business(body: NewBusinessBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data)
-    biz_id, slug = db.create_business(body.name.strip(), u["id"])
+    biz_id, slug = db.create_business(body.name.strip(), u["id"], category=body.category, needs_datetime=body.needs_datetime)
     return {"business_id": biz_id, "slug": slug}
+
+
+@app.get("/api/me")
+def me(x_telegram_init_data: str = Header(default="")):
+    """برای مسیریابی ورود از دکمه‌ی Open: کسب‌وکارهایی که کاربر مدیرشونه + آخرین کسب‌وکاری که با لینکش اومده."""
+    u = validate_init_data(x_telegram_init_data)
+    last = None
+    last_id = db.get_user_context(u["id"])
+    if last_id:
+        b = db.get_business(last_id)
+        if b and b["active"]:
+            last = row(b)
+    return {"businesses": rows(db.get_businesses_for_admin(u["id"])), "last_business": last}
 
 
 @app.get("/api/my-businesses")
@@ -142,7 +157,11 @@ def business_by_slug(slug: str):
     b = db.get_business_by_slug(slug)
     if not b:
         raise HTTPException(404, "کسب‌وکار یافت نشد")
-    return row(b)
+    result = row(b)
+    # تشخیص خودکار: اگه این کسب‌وکار حتی یک متخصص فعال داشته باشه، حالت نوبت‌دهی (مثل سالن)؛
+    # وگرنه حالت سبد خرید (مثل کیک‌فروشی/فست‌فود) - کاملاً دست صاحب کسب‌وکاره، بدون انتخاب اجباری
+    result["has_staff"] = len(db.get_staff_list(b["id"])) > 0
+    return result
 
 
 @app.get("/api/business/{business_id}/services")
@@ -156,8 +175,13 @@ def staff_for_service(service_id: int):
 
 
 @app.get("/api/availability")
-def availability(business_id: int, staff_id: int, date: str, duration: int):
+def availability(business_id: int, date: str, duration: int, staff_id: Optional[int] = None):
     return db.get_available_slots(business_id, staff_id, date, duration)
+
+
+@app.get("/api/business/{business_id}/order-slots")
+def order_slots(business_id: int, date: str):
+    return db.get_order_time_slots(business_id, date)
 
 
 @app.get("/api/discount/validate")
@@ -169,7 +193,7 @@ def check_discount(business_id: int, code: str, base_price: int):
 class CreateAppointmentBody(BaseModel):
     business_id: int
     service_id: int
-    staff_id: int
+    staff_id: Optional[int] = None
     date: str
     time: str
     phone: str
@@ -258,6 +282,125 @@ def send_feedback(body: FeedbackBody, x_telegram_init_data: str = Header(default
 
 
 # =========================================================
+# سفارش (سبد خرید) - برای کسب‌وکارهای مدل order مثل کیک‌فروشی/فست‌فود
+# =========================================================
+
+class OrderItemBody(BaseModel):
+    service_id: int
+    quantity: int
+
+
+class CreateOrderBody(BaseModel):
+    business_id: int
+    items: list[OrderItemBody]
+    delivery_date: Optional[str] = None
+    delivery_time: Optional[str] = None
+    phone: str
+    name: Optional[str] = None
+    discount_code: Optional[str] = None
+    use_points: bool = False
+    staff_id: Optional[int] = None  # اختیاری؛ فقط اگه کسب‌وکار متخصص داشت و مشتری انتخاب کرد
+
+
+@app.get("/api/business/{business_id}/staff")
+def public_staff_list(business_id: int):
+    """لیست متخصص‌های فعال کسب‌وکار - برای این‌که فرانت‌اند تشخیص بده قدم انتخاب متخصص لازمه یا نه."""
+    return rows(db.get_staff_list(business_id))
+
+
+@app.post("/api/orders")
+def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data)
+    if not body.items:
+        raise HTTPException(400, "سبد خرید خالی است")
+
+    business = db.get_business(body.business_id)
+    if not business:
+        raise HTTPException(404, "کسب‌وکار یافت نشد")
+    scheduled = bool(business["needs_datetime"])
+    if scheduled:
+        if not body.delivery_date or not body.delivery_time:
+            raise HTTPException(400, "تاریخ و ساعت لازم است")
+        delivery_date, delivery_time, staff_id = body.delivery_date, body.delivery_time, body.staff_id
+    else:
+        # فروشگاه: تاریخ/ساعت/متخصص معنی نداره
+        delivery_date, delivery_time, staff_id = datetime.now().strftime("%Y-%m-%d"), "00:00", None
+
+    items = []
+    subtotal = 0
+    has_unpriced = False
+    total_duration = 0
+    for it in body.items:
+        if it.quantity <= 0:
+            continue
+        svc = db.get_service(it.service_id)
+        if not svc or svc["business_id"] != body.business_id:
+            raise HTTPException(400, f"محصول نامعتبر: {it.service_id}")
+        price = svc["price"]
+        if price is None:
+            has_unpriced = True
+        else:
+            subtotal += price * it.quantity
+        total_duration += (svc["duration_minutes"] or 0) * it.quantity
+        items.append((it.service_id, it.quantity, price))
+
+    if not items:
+        raise HTTPException(400, "سبد خرید خالی است")
+
+    # اگه متخصص انتخاب شده، باید همون زمان واقعاً هنوز خالی باشه (چک تداخل)
+    if staff_id:
+        staff = db.get_staff_member(staff_id)
+        if not staff or staff["business_id"] != body.business_id:
+            raise HTTPException(400, "متخصص نامعتبر")
+        duration_for_check = max(total_duration, 1)
+        slots = db.get_available_slots(body.business_id, staff_id, delivery_date, duration_for_check)
+        if delivery_time not in slots:
+            raise HTTPException(409, "این ساعت دیگر خالی نیست؛ لطفاً ساعت دیگری انتخاب کنید")
+
+    final_price = None if (has_unpriced and subtotal == 0) else subtotal
+    discount_code, discount_code_id = None, None
+    if body.discount_code and final_price is not None:
+        ok, final_price, msg, code_row = db.validate_discount(body.business_id, body.discount_code, subtotal)
+        if not ok:
+            raise HTTPException(400, msg)
+        discount_code, discount_code_id = code_row["code"], code_row["id"]
+
+    customer = db.upsert_customer(body.business_id, u["id"], body.name or u.get("first_name", ""), body.phone)
+    points_redeemed = 0
+    if body.use_points and customer["loyalty_points"] > 0 and final_price is not None:
+        points_redeemed = customer["loyalty_points"]
+        final_price = max(0, final_price - points_redeemed * LOYALTY_POINT_VALUE_TOMAN)
+        db.redeem_loyalty_points(customer["id"], points_redeemed)
+    if discount_code_id:
+        db.increment_discount_usage(discount_code_id)
+
+    order_id = db.create_order(
+        business_id=body.business_id, customer_id=customer["id"], user_id=u["id"],
+        user_name=body.name or u.get("first_name", ""), user_phone=body.phone,
+        delivery_date=delivery_date, delivery_time=delivery_time,
+        items=items, total_price=final_price, discount_code=discount_code, points_redeemed=points_redeemed,
+        staff_id=staff_id, duration_minutes=total_duration if staff_id else None, scheduled=scheduled,
+    )
+    return {"order_id": order_id, "total_price": final_price}
+
+
+@app.get("/api/my/orders")
+def my_orders(business_id: int, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data)
+    orders = rows(db.get_user_upcoming_orders(business_id, u["id"]))
+    for o in orders:
+        o["items"] = rows(db.get_order_items(o["id"]))
+    return orders
+
+
+@app.post("/api/orders/{order_id}/cancel")
+def cancel_my_order(order_id: int, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data)
+    db.cancel_order(order_id, user_id=u["id"])
+    return {"ok": True}
+
+
+# =========================================================
 # بخش ادمین (همه با چک is_business_admin محافظت می‌شن)
 # =========================================================
 
@@ -268,12 +411,15 @@ def admin_dashboard(business_id: int, x_telegram_init_data: str = Header(default
     today = datetime.now().strftime("%Y-%m-%d")
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     month_start = datetime.now().strftime("%Y-%m-01")
-    today_appts = db.get_appointments_by_date(business_id, today)
+    has_staff = len(db.get_staff_list(business_id)) > 0
+    # همه‌ی رزروهای جدید «سفارش» هستن؛ نوبت‌های قدیمی (اگه از قبل وجود داشته باشن) هم کنارش شمرده می‌شن
+    today_count = len(db.get_orders_by_date(business_id, today)) + len(db.get_appointments_by_date(business_id, today))
+    upcoming_count = len(db.get_all_upcoming_orders(business_id)) + len(db.get_all_upcoming_appointments(business_id))
     month_row, _ = db.get_revenue_report(business_id, month_start, today)
     avg, cnt = db.get_average_rating(business_id)
-    upcoming = db.get_all_upcoming_appointments(business_id)
     return {
-        "business_name": biz["name"], "slug": biz["slug"], "today_count": len(today_appts), "upcoming_count": len(upcoming),
+        "business_name": biz["name"], "slug": biz["slug"], "needs_datetime": bool(biz["needs_datetime"]), "category": biz["category"], "has_staff": has_staff,
+        "today_count": today_count, "upcoming_count": upcoming_count,
         "month_revenue": month_row["revenue"], "month_count": month_row["cnt"],
         "avg_rating": avg, "review_count": cnt,
     }
@@ -296,6 +442,49 @@ def admin_cancel(business_id: int, appointment_id: int, x_telegram_init_data: st
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
     db.cancel_appointment(appointment_id)
     return {"ok": True}
+
+
+@app.get("/api/admin/{business_id}/orders/today")
+def admin_orders_today(business_id: int, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
+    orders = rows(db.get_orders_by_date(business_id, datetime.now().strftime("%Y-%m-%d")))
+    for o in orders:
+        o["items"] = rows(db.get_order_items(o["id"]))
+    return orders
+
+
+@app.get("/api/admin/{business_id}/orders/upcoming")
+def admin_orders_upcoming(business_id: int, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
+    orders = rows(db.get_all_upcoming_orders(business_id))
+    for o in orders:
+        o["items"] = rows(db.get_order_items(o["id"]))
+    return orders
+
+
+class OrderStatusBody(BaseModel):
+    status: str
+
+
+@app.post("/api/admin/{business_id}/orders/{order_id}/status")
+def admin_update_order_status(business_id: int, order_id: int, body: OrderStatusBody, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
+    valid = ("pending", "preparing", "ready", "completed", "cancelled")
+    if body.status not in valid:
+        raise HTTPException(400, "وضعیت نامعتبر")
+    db.update_order_status(order_id, body.status)
+    return {"ok": True}
+
+
+class SettingsBody(BaseModel):
+    needs_datetime: bool
+
+
+@app.post("/api/admin/{business_id}/settings")
+def admin_update_settings(business_id: int, body: SettingsBody, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
+    db.update_business_settings(business_id, body.needs_datetime)
+    return {"ok": True, "needs_datetime": body.needs_datetime}
 
 
 @app.get("/api/admin/{business_id}/customers/search")
@@ -512,21 +701,24 @@ def admin_revenue(business_id: int, period: str = "month", x_telegram_init_data:
 
 @app.get("/api/admin/{business_id}/export-csv")
 def admin_export_csv(business_id: int, x: str = "", x_telegram_init_data: str = Header(default="")):
-    # این endpoint با window.open باز می‌شه (برای دانلود فایل)، پس نمی‌تونیم هدر سفارشی بفرستیم؛
-    # initData رو از کوئری‌پارامتر x هم قبول می‌کنیم (همونی که فرانت‌اند توی URL می‌فرسته)
+    # با window.open باز می‌شه و نمی‌تونه هدر بفرسته؛ پس initData از کوئری‌پارامتر x هم پذیرفته می‌شه
     u = validate_init_data(x_telegram_init_data or x); require_admin(business_id, u)
-    data = db.get_all_appointments_for_export(business_id)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["تاریخ", "ساعت", "خدمت", "متخصص", "مشتری", "تلفن", "قیمت پایه", "قیمت نهایی", "کد تخفیف", "وضعیت"])
-    for r in data:
-        w.writerow([r["date"], r["start_time"], r["service_name"], r["staff_name"], r["user_name"],
-                    r["user_phone"], r["base_price"] if r["base_price"] is not None else "بدون قیمت ثابت",
-                    r["final_price"] if r["final_price"] is not None else "بدون قیمت ثابت",
+    w.writerow(["نوع", "تاریخ", "ساعت", "آیتم‌ها / خدمت", "متخصص", "مشتری", "تلفن", "مبلغ", "کد تخفیف", "وضعیت"])
+    for o, items_txt in db.get_all_orders_for_export(business_id):
+        sch = bool(o["scheduled"])
+        w.writerow(["سفارش", o["delivery_date"] if sch else "", o["delivery_time"] if sch else "",
+                    items_txt, o["staff_name"] or "", o["user_name"], o["user_phone"],
+                    o["total_price"] if o["total_price"] is not None else "قیمت متغیر",
+                    o["discount_code"] or "", o["status"]])
+    for r in db.get_all_appointments_for_export(business_id):  # نوبت‌های قدیمی (در صورت وجود)
+        w.writerow(["نوبت", r["date"], r["start_time"], r["service_name"], r["staff_name"], r["user_name"],
+                    r["user_phone"], r["final_price"] if r["final_price"] is not None else "قیمت متغیر",
                     r["discount_code"] or "", r["status"]])
     content = ("\ufeff" + buf.getvalue()).encode("utf-8")
     return StreamingResponse(io.BytesIO(content), media_type="text/csv",
-                              headers={"Content-Disposition": "attachment; filename=appointments.csv"})
+                              headers={"Content-Disposition": "attachment; filename=orders.csv"})
 
 
 @app.get("/api/admin/{business_id}/feedback")

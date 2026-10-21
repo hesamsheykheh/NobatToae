@@ -28,6 +28,9 @@ def init_db():
                 name TEXT NOT NULL,
                 owner_id INTEGER NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1,
+                mode TEXT NOT NULL DEFAULT 'appointment',  -- 'appointment' (نوبت‌دهی با متخصص) یا 'order' (سفارش محصول، بدون متخصص)
+                category TEXT,  -- مثلاً 'آرایشگاه زنانه' یا 'کافی‌شاپ' - صرفاً نمایشی
+                needs_datetime INTEGER NOT NULL DEFAULT 1,  -- ۰ = بدون تاریخ/ساعت (مثل فروشگاه)
                 created_at TEXT NOT NULL
             );
 
@@ -103,7 +106,7 @@ def init_db():
                 user_name TEXT,
                 user_phone TEXT,
                 service_id INTEGER NOT NULL REFERENCES services(id),
-                staff_id INTEGER NOT NULL REFERENCES staff(id),
+                staff_id INTEGER REFERENCES staff(id),  -- NULL یعنی این کسب‌وکار اصلاً از متخصص استفاده نمی‌کنه
                 date TEXT NOT NULL,
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,
@@ -175,20 +178,79 @@ def init_db():
                 comment TEXT,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS order_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER UNIQUE NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                telegram_id INTEGER NOT NULL,
+                rating INTEGER NOT NULL,
+                comment TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                customer_id INTEGER REFERENCES customers(id),
+                user_id INTEGER NOT NULL,
+                user_name TEXT,
+                user_phone TEXT,
+                staff_id INTEGER REFERENCES staff(id),  -- اختیاری: فقط اگه کسب‌وکار متخصص داشته باشه و لازم باشه
+                delivery_date TEXT NOT NULL,
+                delivery_time TEXT NOT NULL,
+                end_time TEXT,  -- فقط وقتی staff_id ست شده پر می‌شه (برای چک تداخل زمانی)
+                total_price INTEGER,
+                discount_code TEXT,
+                points_redeemed INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending/preparing/ready/completed/cancelled
+                review_prompted INTEGER NOT NULL DEFAULT 0,
+                scheduled INTEGER NOT NULL DEFAULT 1,  -- ۰ = سفارش بدون تاریخ/ساعت (فروشگاهی)
+                reminder_24h_sent INTEGER NOT NULL DEFAULT 0,
+                reminder_1h_sent INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS order_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                service_id INTEGER NOT NULL REFERENCES services(id),
+                quantity INTEGER NOT NULL DEFAULT 1,
+                unit_price INTEGER,
+                subtotal INTEGER
+            );
             """
         )
+
+        # مهاجرت سبک برای دیتابیس‌هایی که قبل از این ویژگی ساخته شدن
+        # (ستون‌های جدید رو اضافه می‌کنه، اگه از قبل نباشن)
+        for alter_sql in (
+            "ALTER TABLE businesses ADD COLUMN mode TEXT NOT NULL DEFAULT 'appointment'",
+            "ALTER TABLE businesses ADD COLUMN category TEXT",
+            "ALTER TABLE orders ADD COLUMN staff_id INTEGER REFERENCES staff(id)",
+            "ALTER TABLE orders ADD COLUMN end_time TEXT",
+            "ALTER TABLE orders ADD COLUMN review_prompted INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE businesses ADD COLUMN needs_datetime INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE orders ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE orders ADD COLUMN reminder_24h_sent INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE orders ADD COLUMN reminder_1h_sent INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(alter_sql)
+            except sqlite3.OperationalError:
+                pass  # ستون از قبل وجود داره، مشکلی نیست
 
 
 # =========================================================
 # کسب‌وکارها
 # =========================================================
 
-def create_business(name, owner_id):
+def create_business(name, owner_id, mode="appointment", category=None, needs_datetime=True):
     slug = secrets.token_hex(3)
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO businesses (slug, name, owner_id, created_at) VALUES (?, ?, ?, ?)",
-            (slug, name, owner_id, datetime.now().isoformat()),
+            "INSERT INTO businesses (slug, name, owner_id, mode, category, needs_datetime, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (slug, name, owner_id, mode, category, 1 if needs_datetime else 0, datetime.now().isoformat()),
         )
         biz_id = cur.lastrowid
         conn.execute(
@@ -196,6 +258,11 @@ def create_business(name, owner_id):
             (biz_id, owner_id),
         )
         return biz_id, slug
+
+
+def update_business_settings(business_id, needs_datetime):
+    with get_conn() as conn:
+        conn.execute("UPDATE businesses SET needs_datetime = ? WHERE id = ?", (1 if needs_datetime else 0, business_id))
 
 
 def get_business_by_slug(slug):
@@ -562,14 +629,34 @@ def get_available_slots(business_id, staff_id, date_str, duration_minutes):
     start_min, end_min = hours
 
     with get_conn() as conn:
-        booked = conn.execute(
-            """
-            SELECT start_time, end_time FROM appointments
-            WHERE staff_id = ? AND date = ? AND status IN ('confirmed', 'completed')
-            ORDER BY start_time
-            """,
-            (staff_id, date_str),
-        ).fetchall()
+        if staff_id is None:
+            # کسب‌وکار بدون متخصص: ظرفیت یکسان و مشترک کل کسب‌وکار (نه هر متخصص جدا)
+            booked = conn.execute(
+                """
+                SELECT start_time, end_time FROM appointments
+                WHERE business_id = ? AND staff_id IS NULL AND date = ? AND status IN ('confirmed', 'completed')
+                ORDER BY start_time
+                """,
+                (business_id, date_str),
+            ).fetchall()
+        else:
+            booked = conn.execute(
+                """
+                SELECT start_time, end_time FROM appointments
+                WHERE staff_id = ? AND date = ? AND status IN ('confirmed', 'completed')
+                ORDER BY start_time
+                """,
+                (staff_id, date_str),
+            ).fetchall()
+            booked_orders = conn.execute(
+                """
+                SELECT delivery_time as start_time, end_time FROM orders
+                WHERE staff_id = ? AND delivery_date = ? AND status NOT IN ('cancelled')
+                  AND end_time IS NOT NULL
+                """,
+                (staff_id, date_str),
+            ).fetchall()
+            booked = list(booked) + list(booked_orders)
 
     busy_ranges = [(_time_to_minutes(r["start_time"]), _time_to_minutes(r["end_time"])) for r in booked]
 
@@ -587,6 +674,29 @@ def get_available_slots(business_id, staff_id, date_str, duration_minutes):
             slots.append(_minutes_to_time(cursor))
         cursor += SLOT_STEP_MINUTES
 
+    return slots
+
+
+def get_order_time_slots(business_id, date_str):
+    """ساعت‌های باز کسب‌وکار برای سفارش (بدون نیاز به متخصص، بدون چک تداخل - چند سفارش می‌تونن هم‌زمان باشن)."""
+    if is_holiday(business_id, date_str):
+        return []
+    weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
+    hours = get_day_hours(business_id, weekday)
+    if hours is None:
+        return []
+    start_min, end_min = hours
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    now_min = datetime.now().hour * 60 + datetime.now().minute
+    if date_str == today_str:
+        start_min = max(start_min, ((now_min // SLOT_STEP_MINUTES) + 1) * SLOT_STEP_MINUTES)
+
+    slots = []
+    cursor = start_min
+    while cursor < end_min:
+        slots.append(_minutes_to_time(cursor))
+        cursor += SLOT_STEP_MINUTES
     return slots
 
 
@@ -620,7 +730,7 @@ def get_user_upcoming_appointments(business_id, user_id):
             SELECT a.*, sv.name as service_name, st.name as staff_name
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             WHERE a.business_id = ? AND a.user_id = ? AND a.status = 'confirmed' AND a.date >= ?
             ORDER BY a.date, a.start_time
             """,
@@ -635,7 +745,7 @@ def get_user_past_appointments(business_id, user_id, limit=10):
             SELECT a.*, sv.name as service_name, st.name as staff_name
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             WHERE a.business_id = ? AND a.user_id = ? AND a.status IN ('completed', 'cancelled')
             ORDER BY a.date DESC, a.start_time DESC
             LIMIT ?
@@ -662,7 +772,7 @@ def get_appointments_by_date(business_id, date_str):
             SELECT a.*, sv.name as service_name, st.name as staff_name
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             WHERE a.business_id = ? AND a.date = ? AND a.status IN ('confirmed', 'completed')
             ORDER BY a.start_time
             """,
@@ -678,7 +788,7 @@ def get_all_upcoming_appointments(business_id):
             SELECT a.*, sv.name as service_name, st.name as staff_name
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             WHERE a.business_id = ? AND a.date >= ? AND a.status = 'confirmed'
             ORDER BY a.date, a.start_time
             """,
@@ -693,7 +803,7 @@ def get_appointment(appointment_id):
             SELECT a.*, sv.name as service_name, st.name as staff_name
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             WHERE a.id = ?
             """,
             (appointment_id,),
@@ -708,7 +818,7 @@ def get_all_appointments_for_export(business_id):
                    a.user_name, a.user_phone, a.base_price, a.final_price, a.discount_code, a.status
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             WHERE a.business_id = ?
             ORDER BY a.date, a.start_time
             """,
@@ -725,7 +835,7 @@ def get_due_reminder_candidates(status="confirmed"):
             SELECT a.*, sv.name as service_name, st.name as staff_name, b.name as business_name
             FROM appointments a
             JOIN services sv ON sv.id = a.service_id
-            JOIN staff st ON st.id = a.staff_id
+            LEFT JOIN staff st ON st.id = a.staff_id
             JOIN businesses b ON b.id = a.business_id
             WHERE a.status = 'confirmed' AND a.date >= ?
             """,
@@ -768,6 +878,76 @@ def get_pending_review_appointments():
 def mark_review_prompted(appointment_id):
     with get_conn() as conn:
         conn.execute("UPDATE appointments SET review_prompted = 1 WHERE id = ?", (appointment_id,))
+
+
+def get_completable_orders():
+    """سفارش‌هایی که زمان تحویلشون گذشته و هنوز بسته (completed/cancelled) نشدن."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM orders WHERE status NOT IN ('completed', 'cancelled') AND scheduled = 1"
+        ).fetchall()
+
+
+def mark_order_completed(order_id):
+    with get_conn() as conn:
+        conn.execute("UPDATE orders SET status = 'completed' WHERE id = ?", (order_id,))
+
+
+def get_pending_review_orders():
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT o.*, b.name as business_name
+            FROM orders o JOIN businesses b ON b.id = o.business_id
+            WHERE o.status = 'completed' AND o.review_prompted = 0
+            """
+        ).fetchall()
+
+
+def get_order_reminder_candidates():
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT o.*, b.name as business_name, st.name as staff_name
+            FROM orders o
+            JOIN businesses b ON b.id = o.business_id
+            LEFT JOIN staff st ON st.id = o.staff_id
+            WHERE o.scheduled = 1 AND o.status NOT IN ('completed', 'cancelled') AND o.delivery_date >= ?
+            """,
+            (today_str,),
+        ).fetchall()
+
+
+def mark_order_reminder_sent(order_id, which):
+    col = "reminder_24h_sent" if which == "24h" else "reminder_1h_sent"
+    with get_conn() as conn:
+        conn.execute(f"UPDATE orders SET {col} = 1 WHERE id = ?", (order_id,))
+
+
+def get_all_orders_for_export(business_id):
+    with get_conn() as conn:
+        orders = conn.execute(
+            """
+            SELECT o.*, st.name as staff_name FROM orders o
+            LEFT JOIN staff st ON st.id = o.staff_id
+            WHERE o.business_id = ? ORDER BY o.created_at
+            """,
+            (business_id,),
+        ).fetchall()
+        result = []
+        for o in orders:
+            items = conn.execute(
+                "SELECT sv.name, oi.quantity FROM order_items oi JOIN services sv ON sv.id = oi.service_id WHERE oi.order_id = ?",
+                (o["id"],),
+            ).fetchall()
+            result.append((o, "، ".join(f"{i['name']}×{i['quantity']}" for i in items)))
+        return result
+
+
+def mark_order_review_prompted(order_id):
+    with get_conn() as conn:
+        conn.execute("UPDATE orders SET review_prompted = 1 WHERE id = ?", (order_id,))
 
 
 # =========================================================
@@ -910,11 +1090,34 @@ def has_review(appointment_id):
         return row is not None
 
 
+def add_order_review(order_id, business_id, telegram_id, rating, comment=None):
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO order_reviews (order_id, business_id, telegram_id, rating, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (order_id, business_id, telegram_id, rating, comment, datetime.now().isoformat()),
+        )
+
+
+def update_order_review_comment(order_id, comment):
+    with get_conn() as conn:
+        conn.execute("UPDATE order_reviews SET comment = ? WHERE order_id = ?", (comment, order_id))
+
+
 def get_average_rating(business_id):
+    # میانگین امتیاز، ترکیبی از نظرات نوبت‌های قدیمی و سفارش‌های جدید
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT AVG(rating) as avg_rating, COUNT(*) as cnt FROM reviews WHERE business_id = ?",
-            (business_id,),
+            """
+            SELECT AVG(rating) as avg_rating, COUNT(*) as cnt FROM (
+                SELECT rating FROM reviews WHERE business_id = ?
+                UNION ALL
+                SELECT rating FROM order_reviews WHERE business_id = ?
+            )
+            """,
+            (business_id, business_id),
         ).fetchone()
         return row["avg_rating"], row["cnt"]
 
@@ -922,8 +1125,15 @@ def get_average_rating(business_id):
 def get_recent_reviews(business_id, limit=10):
     with get_conn() as conn:
         return conn.execute(
-            "SELECT * FROM reviews WHERE business_id = ? ORDER BY created_at DESC LIMIT ?",
-            (business_id, limit),
+            """
+            SELECT * FROM (
+                SELECT rating, comment, created_at FROM reviews WHERE business_id = ?
+                UNION ALL
+                SELECT rating, comment, created_at FROM order_reviews WHERE business_id = ?
+            )
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (business_id, business_id, limit),
         ).fetchall()
 
 
@@ -970,22 +1180,144 @@ def get_platform_feedback_list(limit=30):
 
 
 def get_revenue_report(business_id, date_from, date_to):
+    """درآمد ترکیبی از نوبت‌های قدیمی (appointments) و سفارش‌های جدید (orders)."""
     with get_conn() as conn:
         row = conn.execute(
             """
-            SELECT COUNT(*) as cnt, COALESCE(SUM(final_price), 0) as revenue
-            FROM appointments
-            WHERE business_id = ? AND status IN ('completed', 'confirmed') AND date BETWEEN ? AND ?
+            SELECT
+                (SELECT COUNT(*) FROM appointments WHERE business_id=? AND status IN ('completed','confirmed') AND date BETWEEN ? AND ?)
+              + (SELECT COUNT(*) FROM orders WHERE business_id=? AND status NOT IN ('cancelled') AND delivery_date BETWEEN ? AND ?)
+                AS cnt,
+                COALESCE((SELECT SUM(final_price) FROM appointments WHERE business_id=? AND status IN ('completed','confirmed') AND date BETWEEN ? AND ?), 0)
+              + COALESCE((SELECT SUM(total_price) FROM orders WHERE business_id=? AND status NOT IN ('cancelled') AND delivery_date BETWEEN ? AND ?), 0)
+                AS revenue
             """,
-            (business_id, date_from, date_to),
+            (business_id, date_from, date_to, business_id, date_from, date_to,
+             business_id, date_from, date_to, business_id, date_from, date_to),
         ).fetchone()
+
         by_service = conn.execute(
             """
-            SELECT sv.name, COUNT(*) as cnt, COALESCE(SUM(a.final_price), 0) as revenue
-            FROM appointments a JOIN services sv ON sv.id = a.service_id
-            WHERE a.business_id = ? AND a.status IN ('completed', 'confirmed') AND a.date BETWEEN ? AND ?
-            GROUP BY sv.id ORDER BY revenue DESC
+            SELECT name, SUM(cnt) as cnt, SUM(revenue) as revenue FROM (
+                SELECT sv.name as name, COUNT(*) as cnt, COALESCE(SUM(a.final_price), 0) as revenue
+                FROM appointments a JOIN services sv ON sv.id = a.service_id
+                WHERE a.business_id = ? AND a.status IN ('completed', 'confirmed') AND a.date BETWEEN ? AND ?
+                GROUP BY sv.id
+                UNION ALL
+                SELECT sv.name as name, SUM(oi.quantity) as cnt, COALESCE(SUM(oi.subtotal), 0) as revenue
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN services sv ON sv.id = oi.service_id
+                WHERE o.business_id = ? AND o.status NOT IN ('cancelled') AND o.delivery_date BETWEEN ? AND ?
+                GROUP BY sv.id
+            )
+            GROUP BY name ORDER BY revenue DESC
             """,
-            (business_id, date_from, date_to),
+            (business_id, date_from, date_to, business_id, date_from, date_to),
         ).fetchall()
         return row, by_service
+
+
+# =========================================================
+# سفارش‌ها (برای کسب‌وکارهای مدل order: کیک‌فروشی، فست‌فود، کافی‌شاپ و...)
+# بدون نیاز به انتخاب متخصص؛ هر سفارش می‌تونه چند محصول (آیتم) با تعداد دلخواه داشته باشه
+# =========================================================
+
+def create_order(business_id, customer_id, user_id, user_name, user_phone, delivery_date, delivery_time,
+                  items, total_price, discount_code=None, points_redeemed=0, staff_id=None, duration_minutes=None,
+                  scheduled=True):
+    """items: لیستی از (service_id, quantity, unit_price)"""
+    end_time = None
+    if staff_id and duration_minutes:
+        end_time = _minutes_to_time(_time_to_minutes(delivery_time) + duration_minutes)
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO orders
+                (business_id, customer_id, user_id, user_name, user_phone, staff_id, delivery_date, delivery_time,
+                 end_time, total_price, discount_code, points_redeemed, status, scheduled, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+            """,
+            (business_id, customer_id, user_id, user_name, user_phone, staff_id, delivery_date, delivery_time,
+             end_time, total_price, discount_code, points_redeemed, 1 if scheduled else 0, datetime.now().isoformat()),
+        )
+        order_id = cur.lastrowid
+        for service_id, qty, unit_price in items:
+            subtotal = (unit_price * qty) if unit_price is not None else None
+            conn.execute(
+                "INSERT INTO order_items (order_id, service_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)",
+                (order_id, service_id, qty, unit_price, subtotal),
+            )
+        return order_id
+
+
+def get_order(order_id):
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+
+
+def get_order_items(order_id):
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT oi.*, sv.name as product_name
+            FROM order_items oi JOIN services sv ON sv.id = oi.service_id
+            WHERE oi.order_id = ?
+            """,
+            (order_id,),
+        ).fetchall()
+
+
+def get_orders_by_date(business_id, date_str):
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT o.*, st.name as staff_name FROM orders o
+            LEFT JOIN staff st ON st.id = o.staff_id
+            WHERE o.business_id = ? AND o.status != 'cancelled'
+              AND (o.delivery_date = ? OR (o.scheduled = 0 AND o.status != 'completed'))
+            ORDER BY o.scheduled DESC, o.delivery_time
+            """,
+            (business_id, date_str),
+        ).fetchall()
+
+
+def get_all_upcoming_orders(business_id):
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT o.*, st.name as staff_name FROM orders o
+            LEFT JOIN staff st ON st.id = o.staff_id
+            WHERE o.business_id = ? AND (o.delivery_date >= ? OR o.scheduled = 0)
+              AND o.status NOT IN ('completed', 'cancelled')
+            ORDER BY o.scheduled DESC, o.delivery_date, o.delivery_time
+            """,
+            (business_id, today_str),
+        ).fetchall()
+
+
+def get_user_upcoming_orders(business_id, user_id):
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT * FROM orders
+            WHERE business_id = ? AND user_id = ? AND delivery_date >= ? AND status NOT IN ('completed', 'cancelled')
+            ORDER BY delivery_date, delivery_time
+            """,
+            (business_id, user_id, today_str),
+        ).fetchall()
+
+
+def cancel_order(order_id, user_id=None):
+    with get_conn() as conn:
+        if user_id is not None:
+            conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ? AND user_id = ?", (order_id, user_id))
+        else:
+            conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+
+
+def update_order_status(order_id, status):
+    with get_conn() as conn:
+        conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))

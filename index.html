@@ -82,87 +82,168 @@ function askPrice(current){
 }
 function showError(msg){main.innerHTML=`<div class="err">⚠️ ${msg}</div>`;foot.innerHTML='';}
 
-// ================= نمای مشتری =================
-let biz=null, cs={step:1};
+// ================= نمای مشتری (یکپارچه: سبد خرید + متخصص اختیاری) =================
+let biz=null;
+let cart={items:{},step:1,staff:null,staffList:null}; // items: { serviceId: {product, qty} }
 
 async function startCustomer(slug){
   try{ biz = await api('/api/business/by-slug/'+slug); }
   catch(e){ showError('این لینک رزرو معتبر نیست.'); return; }
-  cs={step:1}; renderCustomer();
+  cart={items:{},step:1,staff:null,staffList:null};
+  renderCart();
 }
 
-async function renderCustomer(){
-  const subs={1:'خدمت مورد نظر رو انتخاب کنید',2:'متخصص رو انتخاب کنید',3:'تاریخ رو انتخاب کنید',4:'ساعت خالی رو انتخاب کنید',5:'بررسی و تایید نهایی',6:''};
-  hT.textContent=biz.name; hS.textContent=subs[cs.step]||'';
+// آیا این کسب‌وکار تاریخ/ساعت می‌خواد؟ (فروشگاه‌ها نه)
+function needsDT(){ return !biz || (biz.needs_datetime!==0 && biz.needs_datetime!==false); }
+
+function cartDuration(){
+  return Object.values(cart.items).reduce((s,it)=>s+((it.product.duration_minutes||0)*it.qty),0);
+}
+
+// ================= سبد خرید (جریان یکتای رزرو/سفارش برای همه کسب‌وکارها) =================
+
+function cartTotal(){
+  return Object.values(cart.items).reduce((s,it)=>s+(it.product.price!=null?it.product.price*it.qty:0),0);
+}
+function cartHasUnpriced(){
+  return Object.values(cart.items).some(it=>it.product.price==null);
+}
+function cartCount(){
+  return Object.values(cart.items).reduce((s,it)=>s+it.qty,0);
+}
+
+async function renderCart(){
+  const subs={1:'محصولات مورد نظرتون رو انتخاب کنید',2:'بررسی سبد خرید',3:'متخصص مورد نظرتون رو انتخاب کنید',4:'تاریخ تحویل رو انتخاب کنید',5:'ساعت تحویل رو انتخاب کنید',6:'بررسی و تایید نهایی',7:''};
+  hT.textContent=biz.name; hS.textContent=subs[cart.step]||'';
   main.innerHTML='';foot.innerHTML='';
-  if(cs.step===1){
+
+  if(cart.step===1){
     main.innerHTML='<div class="loading">⏳</div>';
-    const services = await api(`/api/business/${biz.id}/services`);
+    const products = await api(`/api/business/${biz.id}/services`);
     main.innerHTML='';
-    if(!services.length){main.appendChild(el('<div class="empty">خدمتی تعریف نشده</div>'));return;}
-    services.forEach(s=>{
-      const sub = s.duration_minutes+' دقیقه'+(s.price==null?' · 💬 قیمت در جلسه مشخص می‌شود':'');
-      main.appendChild(card(s.name,sub,s.price,()=>{cs.service=s;cs.step=2;renderCustomer();}));
+    if(!products.length){main.appendChild(el('<div class="empty">محصولی تعریف نشده</div>'));return;}
+    products.forEach(p=>{
+      const qty = cart.items[p.id] ? cart.items[p.id].qty : 0;
+      const priceTxt = p.price!=null ? p.price.toLocaleString('fa-IR')+' تومان' : '💬 قیمت در لحظه تحویل';
+      const row=el(`<div class="card"><div class="row"><div><div class="title">${p.name}</div><div class="sub">${priceTxt}</div></div>
+        <div class="row" style="gap:8px"><button class="btn sm">−</button><span style="min-width:18px;text-align:center">${qty}</span><button class="btn sm">+</button></div></div></div>`);
+      const btns = row.querySelectorAll('button');
+      btns[0].onclick=(e)=>{e.stopPropagation(); if(cart.items[p.id]){cart.items[p.id].qty--; if(cart.items[p.id].qty<=0) delete cart.items[p.id];} renderCart();};
+      btns[1].onclick=(e)=>{e.stopPropagation(); if(!cart.items[p.id]) cart.items[p.id]={product:p, qty:0}; cart.items[p.id].qty++; renderCart();};
+      main.appendChild(row);
     });
+    const count = cartCount();
+    foot.appendChild(btn(count? `🛒 ادامه (${count} قلم)` : 'سبد خرید خالیه', ()=>{ if(count){cart.step=2; renderCart();} }, count?'':'ghost'));
+    // اگه این کاربر واقعاً ادمین یکی از کسب‌وکارهاست (چک واقعی از دیتابیس، نه فقط ظاهری)، دکمه‌ی ورود به پنل نشون بده
+    try{
+      const myBizList = await api('/api/my-businesses');
+      if(myBizList && myBizList.length){
+        const mine = myBizList.find(b=>b.id===biz.id) || myBizList[0];
+        foot.appendChild(btn('🔧 ورود به پنل مدیریت «'+mine.name+'»',()=>{ startAdmin(mine.id); },'ghost'));
+      } else {
+        // کاربر عادی (کسب‌وکار نداره): امکان ساخت کسب‌وکار خودش
+        foot.appendChild(btn('➕ کسب‌وکار خودم رو می‌خوام بسازم',()=>showCategoryPicker(()=>renderCart()),'ghost'));
+      }
+    }catch(e){ /* کاربر مهمون عادیه، مشکلی نیست */ }
   }
-  else if(cs.step===2){
-    main.innerHTML='<div class="loading">⏳</div>';
-    const staffList = await api(`/api/services/${cs.service.id}/staff`);
-    main.innerHTML='';
-    staffList.forEach(s=>main.appendChild(card(s.name,'متخصص',null,()=>{cs.staff=s;cs.step=3;renderCustomer();})));
-    back(()=>{cs.step=1;renderCustomer();});
+
+  else if(cart.step===2){
+    const items=Object.values(cart.items);
+    if(!items.length){cart.step=1; return renderCart();}
+    items.forEach(it=>{
+      const sub = it.product.price!=null ? (it.product.price*it.qty).toLocaleString('fa-IR')+' تومان' : 'قیمت در لحظه تحویل';
+      main.appendChild(el(`<div class="card"><div class="row"><span>${it.product.name} × ${it.qty}</span><span class="price">${sub}</span></div></div>`));
+    });
+    const total = cartTotal();
+    main.appendChild(el(`<div class="srow" style="margin-top:8px"><b>جمع کل</b><b>${total.toLocaleString('fa-IR')} تومان${cartHasUnpriced()?' + اقلام بدون قیمت ثابت':''}</b></div>`));
+    foot.appendChild(btn('➡️ ادامه',async()=>{
+      if(!needsDT()){ cart.staff=null; cart.date=null; cart.time=null; cart.step=6; return renderCart(); }
+      if(cart.staffList===null){ cart.staffList = await api(`/api/business/${biz.id}/staff`); }
+      cart.step = cart.staffList.length ? 3 : 4;
+      renderCart();
+    }));
+    foot.appendChild(btn('⬅️ افزودن محصول بیشتر',()=>{cart.step=1; renderCart();},'ghost'));
   }
-  else if(cs.step===3){
+
+  else if(cart.step===3){
+    // مرحله‌ی اختیاری: فقط وقتی نشون داده می‌شه که این کسب‌وکار حداقل یه متخصص ثبت کرده باشه
+    (cart.staffList||[]).forEach(s=>main.appendChild(card(s.name,'متخصص',null,()=>{cart.staff=s; cart.step=4; renderCart();})));
+    main.appendChild(el('<div class="hdr2" style="margin-top:6px">یا</div>'));
+    foot.appendChild(btn('بدون ترجیح خاص، ادامه بده',()=>{cart.staff=null; cart.step=4; renderCart();},'ghost'));
+    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=2; renderCart();},'ghost'));
+  }
+
+  else if(cart.step===4){
     const dates=[]; const today=new Date();
     for(let i=0;i<10;i++){const d=new Date(today); d.setDate(d.getDate()+i); dates.push(d.toISOString().slice(0,10));}
-    dates.forEach(d=>main.appendChild(card(d,null,null,()=>{cs.date=d;cs.step=4;renderCustomer();})));
-    back(()=>{cs.step=2;renderCustomer();});
+    dates.forEach(d=>main.appendChild(card(d,null,null,()=>{cart.date=d; cart.step=5; renderCart();})));
+    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=cart.staffList&&cart.staffList.length?3:2; renderCart();},'ghost'));
   }
-  else if(cs.step===4){
+
+  else if(cart.step===5){
     main.innerHTML='<div class="loading">⏳</div>';
-    const slots = await api(`/api/availability?business_id=${biz.id}&staff_id=${cs.staff.id}&date=${cs.date}&duration=${cs.service.duration_minutes}`);
+    const slots = cart.staff
+      ? await api(`/api/availability?business_id=${biz.id}&staff_id=${cart.staff.id}&date=${cart.date}&duration=${Math.max(cartDuration(),1)}`)
+      : await api(`/api/business/${biz.id}/order-slots?date=${cart.date}`);
     main.innerHTML='';
-    if(!slots.length){main.appendChild(el('<div class="empty">ساعت خالی در این روز نیست؛ روز دیگه رو امتحان کنید</div>'));back(()=>{cs.step=3;renderCustomer();});return;}
+    if(!slots.length){main.appendChild(el('<div class="empty">این روز ظرفیتی نیست؛ روز دیگه رو امتحان کنید</div>'));foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=4;renderCart();},'ghost'));return;}
     const w=el('<div class="grid3"></div>');
-    slots.forEach(t=>{const s=el(`<div class="slot">${t}</div>`);s.onclick=()=>{cs.time=t;cs.step=5;renderCustomer();};w.appendChild(s);});
-    main.appendChild(w); back(()=>{cs.step=3;renderCustomer();});
+    slots.forEach(t=>{const s=el(`<div class="slot">${t}</div>`); s.onclick=()=>{cart.time=t; cart.step=6; renderCart();}; w.appendChild(s);});
+    main.appendChild(w);
+    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=4; renderCart();},'ghost'));
   }
-  else if(cs.step===5){
-    const priceRow = cs.service.price!=null
-      ? `<div class="srow"><span>💰 مبلغ</span><b>${cs.service.price.toLocaleString('fa-IR')} تومان</b></div>`
-      : `<div class="srow"><span>💰 مبلغ</span><b style="color:var(--muted);font-weight:500">در جلسه مشخص می‌شود</b></div>`;
-    main.appendChild(el(`<div class="card"><div class="srow"><span>💇 خدمت</span><b>${cs.service.name}</b></div><div class="srow"><span>👤 متخصص</span><b>${cs.staff.name}</b></div><div class="srow"><span>📅 تاریخ</span><b>${cs.date}</b></div><div class="srow"><span>🕐 ساعت</span><b>${cs.time}</b></div>${priceRow}</div>`));
-    const phoneInput=el('<input type="tel" placeholder="شماره تماس" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-top:4px">');
+
+  else if(cart.step===6){
+    const items=Object.values(cart.items);
+    items.forEach(it=>main.appendChild(el(`<div class="srow"><span>${it.product.name} × ${it.qty}</span><span>${it.product.price!=null?(it.product.price*it.qty).toLocaleString('fa-IR')+' ت':'—'}</span></div>`)));
+    if(cart.staff) main.appendChild(el(`<div class="srow"><span>👤 متخصص</span><b>${cart.staff.name}</b></div>`));
+    if(needsDT()) main.appendChild(el(`<div class="srow"><span>📅 تحویل</span><b>${cart.date} ساعت ${cart.time}</b></div>`));
+    const total=cartTotal();
+    main.appendChild(el(`<div class="srow"><span>💰 جمع کل</span><b>${total.toLocaleString('fa-IR')} تومان${cartHasUnpriced()?' + موارد متغیر':''}</b></div>`));
+    const phoneInput=el('<input type="tel" placeholder="شماره تماس" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-top:10px">');
     main.appendChild(phoneInput);
-    foot.appendChild(btn('✅ تایید نهایی رزرو',async()=>{
+    foot.appendChild(btn('✅ ثبت نهایی',async()=>{
       if(!phoneInput.value.trim()){alert('شماره تماس رو وارد کنید');return;}
       try{
-        await api('/api/appointments',{method:'POST',body:{business_id:biz.id,service_id:cs.service.id,staff_id:cs.staff.id,date:cs.date,time:cs.time,phone:phoneInput.value.trim(),name:tgUser?tgUser.first_name:''}});
-        cs.step=6; renderCustomer();
+        const body={business_id:biz.id, items:items.map(it=>({service_id:it.product.id, quantity:it.qty})),
+          delivery_date: needsDT()?cart.date:null, delivery_time: needsDT()?cart.time:null,
+          phone:phoneInput.value.trim(), name: tgUser?tgUser.first_name:'',
+          staff_id: (needsDT() && cart.staff) ? cart.staff.id : null};
+        await api('/api/orders',{method:'POST',body});
+        cart.step=7; renderCart();
       }catch(e){ alert('❌ '+e.message); }
     }));
-    back(()=>{cs.step=4;renderCustomer();});
+    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=needsDT()?5:2; renderCart();},'ghost'));
   }
-  else if(cs.step===6){
-    main.innerHTML=`<div class="success"><div class="emoji">🎉</div><h2>نوبت شما ثبت شد!</h2><p style="color:var(--muted);font-size:13px">${cs.service.name} با ${cs.staff.name}<br>${cs.date} ساعت ${cs.time}</p></div>`;
-    foot.appendChild(btn('بازگشت به منو',()=>{cs={step:1};renderCustomer();}));
+
+  else if(cart.step===7){
+    main.innerHTML=`<div class="success"><div class="emoji">🎉</div><h2>سفارش شما ثبت شد!</h2><p style="color:var(--muted);font-size:13px">${needsDT() ? 'تحویل: '+cart.date+' ساعت '+cart.time : 'فروشنده برای هماهنگی با شما تماس می‌گیره.'}</p></div>`;
+    foot.appendChild(btn('بازگشت به منو',()=>{cart={items:{},step:1,staff:null,staffList:null}; renderCart();}));
     if(tg) tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
   }
 }
 
 // ================= پنل مدیریت =================
 const ADM=[
- {k:'dash',ic:'📊',t:'داشبورد'},{k:'today',ic:'📅',t:'نوبت‌های امروز'},{k:'upcoming',ic:'📋',t:'نوبت‌های آینده'},
+ {k:'dash',ic:'📊',t:'داشبورد'},{k:'today',ic:'📅',t:'سفارش‌های امروز'},{k:'upcoming',ic:'📋',t:'سفارش‌های آینده'},
  {k:'services',ic:'💼',t:'مدیریت خدمات'},{k:'staff',ic:'👥',t:'مدیریت متخصص‌ها'},
  {k:'schedule',ic:'⏰',t:'برنامه کاری'},{k:'holidays',ic:'🏖',t:'تعطیلات'},{k:'discounts',ic:'🎟',t:'کدهای تخفیف'},
  {k:'reviews',ic:'⭐',t:'نظرات مشتریان'},{k:'revenue',ic:'📈',t:'گزارش درآمد'},{k:'csv',ic:'📄',t:'خروجی CSV'},
  {k:'admins',ic:'👑',t:'مدیریت ادمین‌ها'},{k:'feedback',ic:'💬',t:'بازخورد کاربران'},{k:'link',ic:'🔗',t:'لینک رزرو'},
+ {k:'settings',ic:'⚙️',t:'تنظیمات'},
 ];
+// بخش‌هایی که فقط برای کسب‌وکارهای تاریخ/ساعت‌دار معنی دارن
+const DT_ONLY = ['upcoming','staff','schedule','holidays'];
+let adminInfo = null;
+function adminNeedsDT(){ return !adminInfo || adminInfo.needs_datetime!==false; }
+function visibleAdm(){
+  return ADM.filter(a=>adminNeedsDT() || !DT_ONLY.includes(a.k)).map(a=> (!adminNeedsDT() && a.k==='today') ? {...a,t:'سفارش‌های باز'} : a);
+}
 let adminBizId=null, aScreen='menu';
 
 async function startAdmin(businessId){
   adminBizId = businessId;
-  try{ await api(`/api/admin/${adminBizId}/dashboard`); }
+  try{ adminInfo = await api(`/api/admin/${adminBizId}/dashboard`); }
   catch(e){ showError('شما ادمین این کسب‌وکار نیستید.'); return; }
   aScreen='menu'; renderAdmin();
 }
@@ -173,8 +254,10 @@ async function renderAdmin(){
   if(aScreen==='menu'){
     main.innerHTML='';
     const g=el('<div class="menu2"></div>');
-    ADM.forEach(a=>{const c=el(`<div class="mcard"><div class="ic">${a.ic}</div><div class="lb">${a.t}</div></div>`);c.onclick=()=>{aScreen=a.k;renderAdmin();};g.appendChild(c);});
+    visibleAdm().forEach(a=>{const c=el(`<div class="mcard"><div class="ic">${a.ic}</div><div class="lb">${a.t}</div></div>`);c.onclick=()=>{aScreen=a.k;renderAdmin();};g.appendChild(c);});
     main.appendChild(g);
+    foot.appendChild(btn('🔁 کسب‌وکارهای من / ساخت کسب‌وکار جدید',async()=>{ const me=await api('/api/me'); showMyBusinesses(me.businesses); },'ghost'));
+    if(biz){ foot.appendChild(btn('⬅️ بازگشت به صفحه رزرو',()=>{cart={items:{},step:1,staff:null,staffList:null};renderCart();},'ghost')); }
     return;
   }
   back(()=>{aScreen='menu';renderAdmin();});
@@ -182,23 +265,32 @@ async function renderAdmin(){
     if(aScreen==='dash'){
       const d = await api(`/api/admin/${adminBizId}/dashboard`);
       main.innerHTML='';
-      main.appendChild(el(`<div class="stat"><div class="v">${d.today_count}</div><div class="l">نوبت امروز</div></div>`));
-      main.appendChild(el(`<div class="stat"><div class="v">${d.upcoming_count}</div><div class="l">نوبت‌های آینده</div></div>`));
-      main.appendChild(el(`<div class="stat"><div class="v">${d.month_revenue.toLocaleString('fa-IR')} تومان</div><div class="l">درآمد این ماه (${d.month_count} نوبت)</div></div>`));
+      adminInfo = d;
+      main.appendChild(el(`<div class="stat"><div class="v">${d.today_count}</div><div class="l">${d.needs_datetime?'سفارش امروز':'سفارش‌های باز'}</div></div>`));
+      if(d.needs_datetime) main.appendChild(el(`<div class="stat"><div class="v">${d.upcoming_count}</div><div class="l">سفارش‌های آینده</div></div>`));
+      main.appendChild(el(`<div class="stat"><div class="v">${d.month_revenue.toLocaleString('fa-IR')} تومان</div><div class="l">درآمد این ماه (${d.month_count} سفارش)</div></div>`));
       main.appendChild(el(`<div class="stat"><div class="v">⭐ ${d.avg_rating?d.avg_rating.toFixed(1):'-'} / ۵</div><div class="l">${d.review_count} نظر</div></div>`));
     }
-    else if(aScreen==='today'){
-      const list = await api(`/api/admin/${adminBizId}/appointments/today`);
+    else if(aScreen==='today' || aScreen==='upcoming'){
+      const endpoint = aScreen==='today' ? 'today' : 'upcoming';
+      const list = await api(`/api/admin/${adminBizId}/orders/${endpoint}`);
       main.innerHTML='';
-      list.length? list.forEach(a=>main.appendChild(card(a.start_time+' - '+a.service_name,a.staff_name+' | '+a.user_name+' | '+a.user_phone))) : main.appendChild(el('<div class="empty">امروز نوبتی نیست</div>'));
-    }
-    else if(aScreen==='upcoming'){
-      const list = await api(`/api/admin/${adminBizId}/appointments/upcoming`);
-      main.innerHTML='';
-      if(!list.length){main.appendChild(el('<div class="empty">نوبت آینده‌ای نیست</div>'));return;}
-      list.forEach(a=>{
-        const c=el(`<div class="card"><div class="row"><div><div class="title">${a.date} - ${a.start_time}</div><div class="sub">${a.service_name} | ${a.staff_name}</div></div><button class="iconbtn">🗑</button></div></div>`);
-        c.querySelector('button').onclick=async(e)=>{e.stopPropagation();await api(`/api/admin/${adminBizId}/appointments/${a.id}/cancel`,{method:'POST'});renderAdmin();};
+      if(!list.length){main.appendChild(el(`<div class="empty">${aScreen==='today'?'امروز سفارشی نیست':'سفارش آینده‌ای نیست'}</div>`));return;}
+      const statusFa={pending:'⏳ در انتظار',preparing:'👩‍🍳 در حال آماده‌سازی',ready:'✅ آماده تحویل',completed:'📦 تحویل‌شده',cancelled:'❌ لغوشده'};
+      list.forEach(o=>{
+        const itemsTxt = (o.items||[]).map(i=>`${i.product_name} ×${i.quantity}`).join('، ');
+        const staffTxt = o.staff_name ? ' | 👤 '+o.staff_name : '';
+        const orderTitle = o.scheduled===0 ? ('سفارش #'+o.id+' · '+String(o.created_at||'').slice(0,16).replace('T',' ')) : (o.delivery_date+' - '+o.delivery_time);
+        const c=el(`<div class="card"><div class="row"><div><div class="title">${orderTitle}</div><div class="sub">${itemsTxt}${staffTxt}</div><div class="sub">${o.user_name||''} | ${o.user_phone||''} | ${statusFa[o.status]||o.status}</div></div><button class="iconbtn">⚙️</button></div></div>`);
+        c.querySelector('button').onclick=async(e)=>{
+          e.stopPropagation();
+          const next={pending:'preparing',preparing:'ready',ready:'completed',completed:null,cancelled:null}[o.status];
+          const choice = confirm(next ? `وضعیت بعدی: «${statusFa[next]}»؟\n(Cancel = لغو سفارش)` : 'این سفارش رو لغو کنیم؟');
+          if(choice && next){ await api(`/api/admin/${adminBizId}/orders/${o.id}/status`,{method:'POST',body:{status:next}}); }
+          else if(!choice){ await api(`/api/admin/${adminBizId}/orders/${o.id}/status`,{method:'POST',body:{status:'cancelled'}}); }
+          else return;
+          renderAdmin();
+        };
         main.appendChild(c);
       });
     }
@@ -206,19 +298,19 @@ async function renderAdmin(){
       const list = await api(`/api/admin/${adminBizId}/services`);
       main.innerHTML='';
       list.forEach(s=>{
-        const sub = s.duration_minutes+' دقیقه'+(s.active?'':' (غیرفعال)')+(s.price==null?' · بدون قیمت ثابت':'');
+        const sub = (adminNeedsDT()? s.duration_minutes+' دقیقه' : 'محصول')+(s.active?'':' (غیرفعال)')+(s.price==null?' · بدون قیمت ثابت':'');
         main.appendChild(card(s.name,sub,s.price,async()=>{
           const name=prompt('نام خدمت:',s.name); if(name===null)return;
-          const dur=prompt('مدت (دقیقه):',s.duration_minutes); if(dur===null)return;
+          const dur = adminNeedsDT() ? prompt('مدت (دقیقه):',s.duration_minutes) : s.duration_minutes; if(dur===null)return;
           const price=askPrice(s.price); if(price===undefined)return;
           await api(`/api/admin/services/${s.id}`,{method:'PATCH',body:{name,duration_minutes:+dur,price}}); renderAdmin();
         }));
       });
       foot.appendChild(btn('➕ افزودن خدمت',async()=>{
         const name=prompt('نام خدمت:'); if(!name)return;
-        const dur=prompt('مدت (دقیقه):','30');
+        const dur = adminNeedsDT() ? prompt('مدت (دقیقه):','30') : '0';
         const price=askPrice(null); if(price===undefined)return;
-        await api(`/api/admin/${adminBizId}/services`,{method:'POST',body:{name,duration_minutes:+dur||30,price}}); renderAdmin();
+        await api(`/api/admin/${adminBizId}/services`,{method:'POST',body:{name,duration_minutes:adminNeedsDT()?(+dur||30):0,price}}); renderAdmin();
       }));
     }
     else if(aScreen==='staff'){
@@ -309,6 +401,19 @@ async function renderAdmin(){
         a.click();
       },'ghost'));
     }
+    else if(aScreen==='settings'){
+      const d = await api(`/api/admin/${adminBizId}/dashboard`);
+      adminInfo = d;
+      main.innerHTML='';
+      main.appendChild(el(`<div class="stat"><div class="v">${d.business_name}</div><div class="l">${d.category||'بدون صنف'}</div></div>`));
+      main.appendChild(card('📅 تاریخ و ساعت تحویل/رزرو', d.needs_datetime ? 'روشن — مشتری تاریخ و ساعت انتخاب می‌کنه (و متخصص، اگه اضافه کرده باشید)' : 'خاموش — مشتری فقط سبد خرید رو ثبت می‌کنه (مناسب فروشگاه)', null, async()=>{
+        const next = !d.needs_datetime;
+        if(!confirm(next ? 'تاریخ و ساعت روشن بشه؟' : 'تاریخ و ساعت خاموش بشه؟\n(متخصص و برنامه کاری هم دیگه استفاده نمی‌شن)')) return;
+        await api(`/api/admin/${adminBizId}/settings`,{method:'POST',body:{needs_datetime:next}});
+        if(biz && biz.id===adminBizId) biz.needs_datetime = next ? 1 : 0;
+        renderAdmin();
+      }));
+    }
     else if(aScreen==='feedback'){
       const list = await api(`/api/admin/${adminBizId}/feedback`);
       main.innerHTML='';
@@ -317,22 +422,80 @@ async function renderAdmin(){
   }catch(e){ main.innerHTML=''; main.appendChild(el(`<div class="empty">⚠️ ${e.message}</div>`)); }
 }
 
+// ================= ساخت کسب‌وکار: انتخاب صنف (مثل اینستاگرام) =================
+// dt = آیا این صنف به‌طور پیش‌فرض تاریخ/ساعت می‌خواد؟ (صاحب کسب‌وکار بعداً از «تنظیمات» می‌تونه عوضش کنه)
+const CATEGORIES = [
+  {g:'خدمات و نوبت‌دهی',ic:'💇‍♀️',label:'آرایشگاه زنانه',dt:true},{g:'خدمات و نوبت‌دهی',ic:'💈',label:'آرایشگاه مردانه',dt:true},
+  {g:'خدمات و نوبت‌دهی',ic:'✨',label:'کلینیک زیبایی و پوست',dt:true},{g:'خدمات و نوبت‌دهی',ic:'💅',label:'ناخن و میکاپ',dt:true},
+  {g:'خدمات و نوبت‌دهی',ic:'💆',label:'ماساژ و اسپا',dt:true},{g:'خدمات و نوبت‌دهی',ic:'🦷',label:'دندانپزشکی',dt:true},
+  {g:'خدمات و نوبت‌دهی',ic:'🩺',label:'مطب پزشک',dt:true},{g:'خدمات و نوبت‌دهی',ic:'🐾',label:'دامپزشکی',dt:true},
+  {g:'خدمات و نوبت‌دهی',ic:'🏋️',label:'باشگاه و مربی شخصی',dt:true},{g:'خدمات و نوبت‌دهی',ic:'📸',label:'آتلیه عکاسی',dt:true},
+  {g:'خدمات و نوبت‌دهی',ic:'📚',label:'آموزشگاه و کلاس خصوصی',dt:true},{g:'خدمات و نوبت‌دهی',ic:'⚖️',label:'مشاوره (حقوقی، روان‌شناسی...)',dt:true},
+  {g:'خدمات و نوبت‌دهی',ic:'🚗',label:'تعمیرگاه و خدمات خودرو',dt:true},
+  {g:'غذا و شیرینی (سفارش با زمان تحویل)',ic:'🎂',label:'کیک و شیرینی‌پزی',dt:true},{g:'غذا و شیرینی (سفارش با زمان تحویل)',ic:'🍔',label:'فست‌فود',dt:true},
+  {g:'غذا و شیرینی (سفارش با زمان تحویل)',ic:'☕',label:'کافی‌شاپ',dt:true},{g:'غذا و شیرینی (سفارش با زمان تحویل)',ic:'🍕',label:'رستوران',dt:true},
+  {g:'غذا و شیرینی (سفارش با زمان تحویل)',ic:'🥐',label:'نانوایی',dt:true},
+  {g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'👕',label:'فروشگاه لباس',dt:false},{g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'👟',label:'فروشگاه کفش و کیف',dt:false},
+  {g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'💐',label:'گل‌فروشی',dt:false},{g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'🛒',label:'فروشگاه و خواربار',dt:false},
+  {g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'💄',label:'لوازم آرایشی و بهداشتی',dt:false},{g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'📱',label:'موبایل و لوازم دیجیتال',dt:false},
+  {g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'📖',label:'کتاب و لوازم‌التحریر',dt:false},{g:'فروشگاه‌ها (بدون تاریخ و ساعت)',ic:'🏪',label:'سایر فروشگاه‌ها',dt:false},
+  {g:'سایر',ic:'📦',label:'سایر مشاغل',dt:true},
+];
+
+function renderLanding(){
+  hT.textContent='نوبت‌دهی و سفارش آنلاین'; hS.textContent='';
+  main.innerHTML=''; foot.innerHTML='';
+  main.appendChild(el('<div class="empty">برای رزرو، از لینک اختصاصی یک کسب‌وکار وارد بشید.</div>'));
+  foot.appendChild(btn('➕ ساخت کسب‌وکار من',showCategoryPicker));
+}
+
+function showCategoryPicker(returnFn){
+  returnFn = returnFn || goHome;
+  hT.textContent='صنف کسب‌وکارتون چیه؟';
+  hS.textContent='فروشگاه‌ها تاریخ و ساعت ندارن؛ بقیه دارن. بعداً از «تنظیمات» می‌تونید عوضش کنید';
+  main.innerHTML=''; foot.innerHTML='';
+  let lastGroup=null;
+  CATEGORIES.forEach(c=>{
+    if(c.g!==lastGroup){ main.appendChild(el(`<div class="hdr2" style="margin-top:12px;font-weight:600">${c.g}</div>`)); lastGroup=c.g; }
+    main.appendChild(card(c.ic+' '+c.label, null, null, async()=>{
+      const name=prompt('نام کسب‌وکار:'); if(!name) return;
+      try{
+        const r = await api('/api/businesses',{method:'POST',body:{name, category:c.label, needs_datetime:c.dt}});
+        const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
+        alert('🎉 ساخته شد! لینک رزرو:\nt.me/'+cfg.bot_username+'?start='+r.slug);
+        startAdmin(r.business_id);
+      }catch(e){ alert('❌ '+e.message); }
+    }));
+  });
+  foot.appendChild(btn('⬅️ انصراف',returnFn,'ghost'));
+}
+
+// ================= کسب‌وکارهای من + مسیریابی ورود =================
+function showMyBusinesses(list){
+  hT.textContent='کسب‌وکارهای من'; hS.textContent='یکی رو برای مدیریت انتخاب کنید';
+  main.innerHTML=''; foot.innerHTML='';
+  list.forEach(b=>main.appendChild(card((b.category?'':'')+b.name, b.category||null, null, ()=>startAdmin(b.id))));
+  foot.appendChild(btn('➕ ساخت کسب‌وکار جدید',()=>showCategoryPicker(()=>showMyBusinesses(list))));
+}
+
+// ورود از دکمه‌ی Open (بدون لینک خاص):
+// ۱) اگه کسب‌وکار داره → پنل مدیریت  ۲) وگرنه اگه با لینک کسب‌وکاری اومده بود → صفحه‌ی همون کسب‌وکار  ۳) وگرنه صفحه‌ی ساخت کسب‌وکار
+async function goHome(){
+  try{
+    const me = await api('/api/me');
+    if(me.businesses.length===1) return startAdmin(me.businesses[0].id);
+    if(me.businesses.length>1) return showMyBusinesses(me.businesses);
+    if(me.last_business) return startCustomer(me.last_business.slug);
+  }catch(e){ /* اگه مشکلی بود، صفحه‌ی ساده‌ی ورود رو نشون بده */ }
+  renderLanding();
+}
+
 // ================= شروع =================
 (async function init(){
   if(!initData){ showError('این صفحه فقط باید از داخل تلگرام (دکمه داخل ربات) باز بشه.'); return; }
   if(isAdminMode && qsBiz){ startAdmin(parseInt(qsBiz)); }
   else if(qsBiz){ startCustomer(qsBiz); }
-  else {
-    main.innerHTML='';
-    main.appendChild(el('<div class="empty">برای رزرو، از لینک اختصاصی یک کسب‌وکار وارد بشید.</div>'));
-    foot.appendChild(btn('➕ ساخت کسب‌وکار من',async()=>{
-      const name=prompt('نام کسب‌وکار جدید:'); if(!name)return;
-      const r = await api('/api/businesses',{method:'POST',body:{name}});
-      const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
-      alert('🎉 ساخته شد! لینک رزرو:\nt.me/'+cfg.bot_username+'?start='+r.slug);
-      startAdmin(r.business_id);
-    }));
-  }
+  else { goHome(); }
 })();
 </script>
 </body>

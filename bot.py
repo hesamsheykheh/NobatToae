@@ -11,7 +11,7 @@
 """
 import logging
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, MenuButtonWebApp
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 import database as db
@@ -35,6 +35,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not business:
             await update.message.reply_text("⚠️ این لینک رزرو معتبر نیست یا کسب‌وکار غیرفعال شده.")
             return
+        # یادمون می‌مونه این کاربر با لینک کدوم کسب‌وکار اومده؛ دکمه‌ی Open کنار کادر پیام ازش استفاده می‌کنه
+        db.set_user_context(update.effective_user.id, business["id"])
         await update.message.reply_text(
             f"👋 سلام {update.effective_user.first_name} عزیز!\nبرای رزرو نوبت از «{business['name']}» دکمه زیر رو بزنید:",
             reply_markup=webapp_button("📅 باز کردن اپ رزرو", f"{base}/?biz={slug}"),
@@ -42,9 +44,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "👋 سلام! برای رزرو نوبت باید از لینک اختصاصی یک کسب‌وکار وارد بشید.\n\n"
-        "اگه می‌خواید خودتون کسب‌وکار جدیدی (مثل سالن زیبایی) راه‌اندازی کنید، دکمه زیر رو بزنید:",
-        reply_markup=webapp_button("🌐 باز کردن اپ", base + "/"),
+        "👋 سلام! دکمه‌ی «ورود» (کنار کادر پیام) یا دکمه‌ی زیر رو بزنید.\n\n"
+        "• اگه کسب‌وکار دارید، مستقیم وارد پنل مدیریتش می‌شید\n"
+        "• اگه با لینک یه کسب‌وکار اومدید، صفحه‌ی همون کسب‌وکار باز می‌شه\n"
+        "• و می‌تونید همین‌جا کسب‌وکار خودتون رو هم بسازید",
+        reply_markup=webapp_button("🌐 ورود", base + "/"),
     )
 
 
@@ -76,16 +80,36 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("این نوبت یافت نشد.")
         return
     db.add_review(appt_id, appt["business_id"], update.effective_user.id, rating)
-    context.user_data["awaiting_comment_for"] = appt_id
+    context.user_data["awaiting_comment_for"] = {"type": "appointment", "id": appt_id}
+    await query.edit_message_text(
+        f"🙏 ممنون بابت امتیاز {rating}⭐!\nاگه نظر متنی هم دارید همین‌جا بنویسید (یا این پیام رو نادیده بگیرید)."
+    )
+
+
+async def handle_order_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    _, order_id, rating = query.data.split("_")
+    order_id, rating = int(order_id), int(rating)
+    order = db.get_order(order_id)
+    if not order:
+        await query.edit_message_text("این سفارش یافت نشد.")
+        return
+    db.add_order_review(order_id, order["business_id"], update.effective_user.id, rating)
+    context.user_data["awaiting_comment_for"] = {"type": "order", "id": order_id}
     await query.edit_message_text(
         f"🙏 ممنون بابت امتیاز {rating}⭐!\nاگه نظر متنی هم دارید همین‌جا بنویسید (یا این پیام رو نادیده بگیرید)."
     )
 
 
 async def maybe_save_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    appt_id = context.user_data.pop("awaiting_comment_for", None)
-    if appt_id:
-        db.update_review_comment(appt_id, update.message.text.strip())
+    pending = context.user_data.pop("awaiting_comment_for", None)
+    if pending:
+        text = update.message.text.strip()
+        if pending["type"] == "order":
+            db.update_order_review_comment(pending["id"], text)
+        else:
+            db.update_review_comment(pending["id"], text)
         await update.message.reply_text("🙏 ممنون از نظر شما!")
     # اگه منتظر نظر نبودیم، پیام رو نادیده می‌گیریم (این ربات منوی دیگه‌ای نداره)
 
@@ -94,13 +118,27 @@ async def maybe_save_comment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # اجرای ربات
 # =========================================================
 
+async def post_init(app):
+    """دکمه‌ی منوی کنار کادر پیام (همونی که «Open» نوشته) رو برای همه‌ی کاربرا روی Mini App ست می‌کنه."""
+    try:
+        base = MINI_APP_URL.rstrip("/")
+        if base and base != "https://example.com":
+            await app.bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(text="🌐 ورود", web_app=WebAppInfo(url=base + "/"))
+            )
+            logger.info("✅ دکمه‌ی منوی ربات روی Mini App ست شد")
+    except Exception as e:
+        logger.warning(f"ست کردن دکمه‌ی منو ناموفق بود (از BotFather هم می‌تونید دستی بذارید): {e}")
+
+
 def build_application():
     db.init_db()
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("claimadmin", claim_admin))
     app.add_handler(CallbackQueryHandler(handle_rating, pattern="^rate_"))
+    app.add_handler(CallbackQueryHandler(handle_order_rating, pattern="^rateo_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, maybe_save_comment))
 
     import jobs
