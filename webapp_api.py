@@ -104,7 +104,8 @@ def serve_index():
             500,
             "فایل index.html پیدا نشد. این مسیرها بررسی شدن:\n" + "\n".join(_CANDIDATE_PATHS),
         )
-    return FileResponse(path)
+    # بدون کش: تا بعد از هر آپدیت، تلگرام نسخه‌ی قدیمی صفحه رو نشون نده
+    return FileResponse(path, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/config")
@@ -118,14 +119,13 @@ def public_config():
 
 class NewBusinessBody(BaseModel):
     name: str
-    category: Optional[str] = None  # صنف انتخاب‌شده (مثل «آرایشگاه زنانه» یا «فروشگاه لباس»)
-    needs_datetime: bool = True  # پیش‌فرض از روی صنف تعیین می‌شه (فروشگاه = False)
+    category: Optional[str] = None  # صنف انتخاب‌شده (مثل «آرایشگاه زنانه»)
 
 
 @app.post("/api/businesses")
 def create_business(body: NewBusinessBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data)
-    biz_id, slug = db.create_business(body.name.strip(), u["id"], category=body.category, needs_datetime=body.needs_datetime)
+    biz_id, slug = db.create_business(body.name.strip(), u["id"], category=body.category)
     return {"business_id": biz_id, "slug": slug}
 
 
@@ -317,25 +317,19 @@ def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(defau
     business = db.get_business(body.business_id)
     if not business:
         raise HTTPException(404, "کسب‌وکار یافت نشد")
-    scheduled = bool(business["needs_datetime"])
-    if scheduled:
-        if not body.delivery_date or not body.delivery_time:
-            raise HTTPException(400, "تاریخ و ساعت لازم است")
-        delivery_date, delivery_time, staff_id = body.delivery_date, body.delivery_time, body.staff_id
-    else:
-        # فروشگاه: تاریخ/ساعت/متخصص معنی نداره
-        delivery_date, delivery_time, staff_id = datetime.now().strftime("%Y-%m-%d"), "00:00", None
 
     items = []
     subtotal = 0
     has_unpriced = False
     total_duration = 0
+    kinds = set()
     for it in body.items:
         if it.quantity <= 0:
             continue
         svc = db.get_service(it.service_id)
         if not svc or svc["business_id"] != body.business_id:
-            raise HTTPException(400, f"محصول نامعتبر: {it.service_id}")
+            raise HTTPException(400, f"آیتم نامعتبر: {it.service_id}")
+        kinds.add(svc["kind"])
         price = svc["price"]
         if price is None:
             has_unpriced = True
@@ -346,6 +340,19 @@ def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(defau
 
     if not items:
         raise HTTPException(400, "سبد خرید خالی است")
+    if len(kinds) > 1:
+        raise HTTPException(400, "خدمت و محصول فروشگاه رو جداگانه سفارش بدید")
+    kind = kinds.pop()
+
+    # خدمت: همیشه تاریخ/ساعت (و متخصص اختیاری). محصول فروشگاه: فقط اگه صاحب کسب‌وکار روشن کرده باشه
+    scheduled = True if kind == "service" else bool(business["shop_datetime"])
+    if scheduled:
+        if not body.delivery_date or not body.delivery_time:
+            raise HTTPException(400, "تاریخ و ساعت لازم است")
+        delivery_date, delivery_time = body.delivery_date, body.delivery_time
+        staff_id = body.staff_id if kind == "service" else None
+    else:
+        delivery_date, delivery_time, staff_id = datetime.now().strftime("%Y-%m-%d"), "00:00", None
 
     # اگه متخصص انتخاب شده، باید همون زمان واقعاً هنوز خالی باشه (چک تداخل)
     if staff_id:
@@ -418,7 +425,7 @@ def admin_dashboard(business_id: int, x_telegram_init_data: str = Header(default
     month_row, _ = db.get_revenue_report(business_id, month_start, today)
     avg, cnt = db.get_average_rating(business_id)
     return {
-        "business_name": biz["name"], "slug": biz["slug"], "needs_datetime": bool(biz["needs_datetime"]), "category": biz["category"], "has_staff": has_staff,
+        "business_name": biz["name"], "slug": biz["slug"], "shop_datetime": bool(biz["shop_datetime"]), "category": biz["category"], "has_staff": has_staff,
         "today_count": today_count, "upcoming_count": upcoming_count,
         "month_revenue": month_row["revenue"], "month_count": month_row["cnt"],
         "avg_rating": avg, "review_count": cnt,
@@ -472,19 +479,27 @@ def admin_update_order_status(business_id: int, order_id: int, body: OrderStatus
     valid = ("pending", "preparing", "ready", "completed", "cancelled")
     if body.status not in valid:
         raise HTTPException(400, "وضعیت نامعتبر")
+    order = db.get_order(order_id)
+    if not order or order["business_id"] != business_id:
+        raise HTTPException(404, "سفارش یافت نشد")
+    # تحویل دستی (مثل سفارش‌های فروشگاه) هم باید امتیاز وفاداری بده، درست مثل تکمیل خودکار
+    if body.status == "completed" and order["status"] != "completed" and order["customer_id"] and order["total_price"] is not None:
+        points = order["total_price"] // LOYALTY_TOMAN_PER_POINT
+        if points > 0:
+            db.add_loyalty_points(order["customer_id"], points)
     db.update_order_status(order_id, body.status)
     return {"ok": True}
 
 
 class SettingsBody(BaseModel):
-    needs_datetime: bool
+    shop_datetime: bool
 
 
 @app.post("/api/admin/{business_id}/settings")
 def admin_update_settings(business_id: int, body: SettingsBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    db.update_business_settings(business_id, body.needs_datetime)
-    return {"ok": True, "needs_datetime": body.needs_datetime}
+    db.update_business_settings(business_id, body.shop_datetime)
+    return {"ok": True, "shop_datetime": body.shop_datetime}
 
 
 @app.get("/api/admin/{business_id}/customers/search")
@@ -497,20 +512,24 @@ def admin_search_customers(business_id: int, q: str, x_telegram_init_data: str =
 
 class ServiceBody(BaseModel):
     name: str
-    duration_minutes: int
-    price: Optional[int] = None  # None یعنی بدون قیمت ثابت
+    duration_minutes: int = 0
+    price: Optional[int] = None
+    kind: str = "service"  # 'service' (خدمت) یا 'product' (محصول فروشگاه)؛ price=None یعنی بدون قیمت ثابت
 
 
 @app.get("/api/admin/{business_id}/services")
-def admin_list_services(business_id: int, x_telegram_init_data: str = Header(default="")):
+def admin_list_services(business_id: int, kind: Optional[str] = None, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    return rows(db.get_services(business_id, active_only=False))
+    items = rows(db.get_services(business_id, active_only=False))
+    if kind in ("service", "product"):
+        items = [i for i in items if i["kind"] == kind]
+    return items
 
 
 @app.post("/api/admin/{business_id}/services")
 def admin_add_service(business_id: int, body: ServiceBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    sid = db.add_service(business_id, body.name, body.duration_minutes, body.price)
+    sid = db.add_service(business_id, body.name, 0 if body.kind == "product" else body.duration_minutes, body.price, kind=body.kind)
     return {"id": sid}
 
 

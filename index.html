@@ -2,6 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-store, max-age=0">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>رزرو نوبت</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -62,6 +63,7 @@
   <footer id="foot"></footer>
 </div>
 <script>
+const APP_VERSION = '۳.۲';
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 if(tg){ tg.ready(); tg.expand(); }
 const initData = tg ? tg.initData : "";
@@ -595,7 +597,7 @@ const CATEGORIES = [
 ];
 
 function renderLanding(){
-  hT.textContent='نوبت‌دهی و سفارش آنلاین'; hS.textContent='';
+  hT.textContent='نوبت‌دهی و سفارش آنلاین'; hS.textContent='نسخه '+APP_VERSION;
   main.innerHTML=''; foot.innerHTML='';
   main.appendChild(el('<div class="empty">برای رزرو، از لینک اختصاصی یک کسب‌وکار وارد بشید.</div>'));
   foot.appendChild(btn('➕ ساخت کسب‌وکار من',showCategoryPicker));
@@ -773,12 +775,18 @@ function showMyBusinesses(list){
 // ورود از دکمه‌ی Open (بدون لینک خاص):
 // ۱) اگه کسب‌وکار داره → پنل مدیریت  ۲) وگرنه اگه با لینک کسب‌وکاری اومده بود → صفحه‌ی همون کسب‌وکار  ۳) وگرنه صفحه‌ی ساخت کسب‌وکار
 async function goHome(){
-  try{
-    const me = await api('/api/me');
+  let me=null;
+  try{ me = await api('/api/me'); }
+  catch(e){
+    // اگه سرور هنوز نسخه‌ی قدیمی بود (بدون /api/me)، از مسیر قدیمی‌تر کسب‌وکارهای کاربر رو می‌گیریم
+    try{ const list = await api('/api/my-businesses'); me = {businesses:list, last_business:null}; }
+    catch(e2){ me=null; }
+  }
+  if(me){
     if(me.businesses.length===1) return startAdmin(me.businesses[0].id);
     if(me.businesses.length>1) return showMyBusinesses(me.businesses);
     if(me.last_business) return startCustomer(me.last_business.slug);
-  }catch(e){ /* اگه مشکلی بود، صفحه‌ی ساده‌ی ورود رو نشون بده */ }
+  }
   renderLanding();
 }
 
