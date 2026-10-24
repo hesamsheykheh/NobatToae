@@ -63,7 +63,7 @@
   <footer id="foot"></footer>
 </div>
 <script>
-const APP_VERSION = '۳.۲';
+const APP_VERSION = '۳.۳';
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 if(tg){ tg.ready(); tg.expand(); }
 const initData = tg ? tg.initData : "";
@@ -80,7 +80,7 @@ async function api(path, opts={}){
     headers: {'Content-Type':'application/json','X-Telegram-Init-Data':initData, ...(opts.headers||{})},
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if(!res.ok){ const e = await res.json().catch(()=>({detail:'خطا'})); throw new Error(e.detail||'خطا'); }
+  if(!res.ok){ const e = await res.json().catch(()=>({detail:'خطا'})); const err = new Error(e.detail||'خطا'); err.status = res.status; throw err; }
   return res.status===204?null:res.json();
 }
 
@@ -408,7 +408,18 @@ let adminBizId=null, aScreen='menu';
 async function startAdmin(businessId){
   adminBizId = businessId;
   try{ adminInfo = await api(`/api/admin/${adminBizId}/dashboard`); }
-  catch(e){ showError('شما ادمین این کسب‌وکار نیستید.'); return; }
+  catch(e){
+    // فقط خطای ۴۰۳ یعنی «ادمین نیستید»؛ بقیه‌ی خطاها مشکل سرور/اتصاله و علتش نمایش داده می‌شه
+    main.innerHTML=''; foot.innerHTML='';
+    hT.textContent='پنل مدیریت'; hS.textContent='';
+    const msg = (e.status===403 || e.status===401 || e.status===404)
+      ? '⛔ شما ادمین این کسب‌وکار نیستید. اگه تازه کسب‌وکار ساخته بودید، ممکنه سرور ری‌استارت شده و اطلاعات هنوز برنگشته باشه؛ چند لحظه بعد دوباره امتحان کنید.'
+      : '⚠️ خطای سرور (کد '+(e.status||'?')+'): '+e.message+'\nمطمئن بشید همه‌ی فایل‌های پروژه (به‌خصوص database.py و webapp_api.py) آپدیت شدن.';
+    main.appendChild(el('<div class="err"></div>')).textContent = msg;
+    if(!(e.status===403 || e.status===401)) foot.appendChild(btn('🔄 تلاش دوباره',()=>startAdmin(businessId)));
+    foot.appendChild(btn('⬅️ بازگشت',goHome,'ghost'));
+    return;
+  }
   aScreen='menu'; renderAdmin();
 }
 

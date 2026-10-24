@@ -17,6 +17,10 @@ WEBAPP_PORT = int(os.getenv("PORT", os.getenv("WEBAPP_PORT", "8080")))
 
 DB_PATH = os.getenv("DB_PATH", "salon.db")
 
+# آیدی عددی تلگرام شما؛ پشتیبان دیتابیس توی این چت فرستاده و پین می‌شه (و موقع ری‌استارت سرور از همین‌جا برمی‌گرده).
+# روی Render رایگان حتماً ست کنید، وگرنه با هر ری‌استارت همه‌ی اطلاعات پاک می‌شه.
+BACKUP_CHAT_ID = int(os.getenv("BACKUP_CHAT_ID", "0")) or PLATFORM_OWNER_ID
+
 # ساعات کاری پیش‌فرض (اگر کسب‌وکاری برنامه کاری اختصاصی تنظیم نکرده باشد)
 DEFAULT_WORK_START_HOUR = 9
 DEFAULT_WORK_END_HOUR = 20

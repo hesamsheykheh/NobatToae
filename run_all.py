@@ -8,6 +8,7 @@ import threading
 import uvicorn
 
 from config import WEBAPP_PORT
+import backup
 import bot as bot_module
 
 
@@ -17,6 +18,9 @@ def run_webapp():
 
 
 if __name__ == "__main__":
+    # اگه دیتابیس خالیه (مثلاً Render سرور رو ری‌استارت کرده)، از پشتیبان تلگرام برمی‌گردونیم
+    backup.restore_if_needed()
+
     # سرور Mini App توی یک ترد جدا اجرا می‌شه
     threading.Thread(target=run_webapp, daemon=True).start()
 

@@ -18,6 +18,36 @@ def get_conn():
         conn.close()
 
 
+# ستون‌هایی که بعد از نسخه‌ی اول اضافه شدن: (جدول، ستون، دستور افزودن)
+MIGRATIONS = [
+    ("businesses", "mode", "ALTER TABLE businesses ADD COLUMN mode TEXT NOT NULL DEFAULT 'appointment'"),
+    ("businesses", "category", "ALTER TABLE businesses ADD COLUMN category TEXT"),
+    ("businesses", "needs_datetime", "ALTER TABLE businesses ADD COLUMN needs_datetime INTEGER NOT NULL DEFAULT 1"),
+    ("businesses", "shop_datetime", "ALTER TABLE businesses ADD COLUMN shop_datetime INTEGER NOT NULL DEFAULT 0"),
+    ("services", "kind", "ALTER TABLE services ADD COLUMN kind TEXT NOT NULL DEFAULT 'service'"),
+    ("orders", "staff_id", "ALTER TABLE orders ADD COLUMN staff_id INTEGER REFERENCES staff(id)"),
+    ("orders", "end_time", "ALTER TABLE orders ADD COLUMN end_time TEXT"),
+    ("orders", "review_prompted", "ALTER TABLE orders ADD COLUMN review_prompted INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "scheduled", "ALTER TABLE orders ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 1"),
+    ("orders", "reminder_24h_sent", "ALTER TABLE orders ADD COLUMN reminder_24h_sent INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "reminder_1h_sent", "ALTER TABLE orders ADD COLUMN reminder_1h_sent INTEGER NOT NULL DEFAULT 0"),
+]
+
+
+def _existing_columns(conn, table):
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def schema_report():
+    """ستون‌هایی که دیتابیس فعلی کم داره (برای تشخیص ناهماهنگی فایل‌های سرور). لیست خالی = همه‌چیز سالمه."""
+    missing = []
+    with get_conn() as conn:
+        for table, column, _ in MIGRATIONS:
+            if column not in _existing_columns(conn, table):
+                missing.append(f"{table}.{column}")
+    return missing
+
+
 def init_db():
     with get_conn() as conn:
         conn.executescript(
@@ -30,7 +60,8 @@ def init_db():
                 active INTEGER NOT NULL DEFAULT 1,
                 mode TEXT NOT NULL DEFAULT 'appointment',  -- 'appointment' (نوبت‌دهی با متخصص) یا 'order' (سفارش محصول، بدون متخصص)
                 category TEXT,  -- مثلاً 'آرایشگاه زنانه' یا 'کافی‌شاپ' - صرفاً نمایشی
-                needs_datetime INTEGER NOT NULL DEFAULT 1,  -- ۰ = بدون تاریخ/ساعت (مثل فروشگاه)
+                needs_datetime INTEGER NOT NULL DEFAULT 1,  -- (قدیمی، دیگه استفاده نمی‌شه)
+                shop_datetime INTEGER NOT NULL DEFAULT 0,  -- ۱ = مشتری برای سفارش فروشگاه، تاریخ/ساعت تحویل هم انتخاب کنه
                 created_at TEXT NOT NULL
             );
 
@@ -71,7 +102,8 @@ def init_db():
                 name TEXT NOT NULL,
                 duration_minutes INTEGER NOT NULL,
                 price INTEGER,  -- NULL یعنی بدون قیمت ثابت (مثلاً برای مشاوره یا کارهای وابسته به نرخ ارز)
-                active INTEGER NOT NULL DEFAULT 1
+                active INTEGER NOT NULL DEFAULT 1,
+                kind TEXT NOT NULL DEFAULT 'service'  -- 'service' = خدمت/نوبت‌دهی، 'product' = محصول فروشگاه
             );
 
             CREATE TABLE IF NOT EXISTS staff (
@@ -222,35 +254,26 @@ def init_db():
             """
         )
 
-        # مهاجرت سبک برای دیتابیس‌هایی که قبل از این ویژگی ساخته شدن
-        # (ستون‌های جدید رو اضافه می‌کنه، اگه از قبل نباشن)
-        for alter_sql in (
-            "ALTER TABLE businesses ADD COLUMN mode TEXT NOT NULL DEFAULT 'appointment'",
-            "ALTER TABLE businesses ADD COLUMN category TEXT",
-            "ALTER TABLE orders ADD COLUMN staff_id INTEGER REFERENCES staff(id)",
-            "ALTER TABLE orders ADD COLUMN end_time TEXT",
-            "ALTER TABLE orders ADD COLUMN review_prompted INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE businesses ADD COLUMN needs_datetime INTEGER NOT NULL DEFAULT 1",
-            "ALTER TABLE orders ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 1",
-            "ALTER TABLE orders ADD COLUMN reminder_24h_sent INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE orders ADD COLUMN reminder_1h_sent INTEGER NOT NULL DEFAULT 0",
-        ):
-            try:
-                conn.execute(alter_sql)
-            except sqlite3.OperationalError:
-                pass  # ستون از قبل وجود داره، مشکلی نیست
+        # مهاجرت: ستون‌های جدیدی که توی نسخه‌های بعدی اضافه شدن رو به دیتابیس‌های قدیمی اضافه می‌کنه
+        for table, column, ddl in MIGRATIONS:
+            if column not in _existing_columns(conn, table):
+                try:
+                    conn.execute(ddl)
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise  # خطای واقعی (مثلاً قفل دیتابیس) نباید بی‌سروصدا نادیده گرفته بشه
 
 
 # =========================================================
 # کسب‌وکارها
 # =========================================================
 
-def create_business(name, owner_id, mode="appointment", category=None, needs_datetime=True):
+def create_business(name, owner_id, mode="appointment", category=None):
     slug = secrets.token_hex(3)
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO businesses (slug, name, owner_id, mode, category, needs_datetime, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (slug, name, owner_id, mode, category, 1 if needs_datetime else 0, datetime.now().isoformat()),
+            "INSERT INTO businesses (slug, name, owner_id, mode, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (slug, name, owner_id, mode, category, datetime.now().isoformat()),
         )
         biz_id = cur.lastrowid
         conn.execute(
@@ -260,9 +283,9 @@ def create_business(name, owner_id, mode="appointment", category=None, needs_dat
         return biz_id, slug
 
 
-def update_business_settings(business_id, needs_datetime):
+def update_business_settings(business_id, shop_datetime):
     with get_conn() as conn:
-        conn.execute("UPDATE businesses SET needs_datetime = ? WHERE id = ?", (1 if needs_datetime else 0, business_id))
+        conn.execute("UPDATE businesses SET shop_datetime = ? WHERE id = ?", (1 if shop_datetime else 0, business_id))
 
 
 def get_business_by_slug(slug):
@@ -378,11 +401,11 @@ def get_user_context(telegram_id):
 # خدمات
 # =========================================================
 
-def add_service(business_id, name, duration_minutes, price=None):
+def add_service(business_id, name, duration_minutes, price=None, kind="service"):
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO services (business_id, name, duration_minutes, price) VALUES (?, ?, ?, ?)",
-            (business_id, name, duration_minutes, price),
+            "INSERT INTO services (business_id, name, duration_minutes, price, kind) VALUES (?, ?, ?, ?, ?)",
+            (business_id, name, duration_minutes, price, kind if kind in ("service", "product") else "service"),
         )
         return cur.lastrowid
 

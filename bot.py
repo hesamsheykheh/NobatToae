@@ -15,6 +15,8 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppI
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 import database as db
+import backup
+from config import BACKUP_CHAT_ID
 from config import BOT_TOKEN, MINI_APP_URL
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -50,6 +52,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• و می‌تونید همین‌جا کسب‌وکار خودتون رو هم بسازید",
         reply_markup=webapp_button("🌐 ورود", base + "/"),
     )
+
+
+async def backup_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not BACKUP_CHAT_ID or update.effective_user.id != BACKUP_CHAT_ID:
+        await update.message.reply_text("⛔️ این دستور فقط برای مدیر اصلی ربات فعاله.")
+        return
+    sent = await backup.make_backup(context.bot, force=True)
+    await update.message.reply_text("✅ پشتیبان ساخته و پین شد." if sent else "ℹ️ پشتیبان‌گیری ممکن نیست (دیتابیس پیدا نشد).")
 
 
 async def claim_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,6 +147,7 @@ def build_application():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("claimadmin", claim_admin))
+    app.add_handler(CommandHandler("backupnow", backup_now))
     app.add_handler(CallbackQueryHandler(handle_rating, pattern="^rate_"))
     app.add_handler(CallbackQueryHandler(handle_order_rating, pattern="^rateo_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, maybe_save_comment))

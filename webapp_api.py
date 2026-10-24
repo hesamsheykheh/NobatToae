@@ -8,6 +8,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import csv
@@ -34,14 +35,24 @@ def _find_index_html():
 INDEX_HTML_PATH = _find_index_html()
 
 from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 
 import database as db
 from config import BOT_TOKEN, BOT_USERNAME, LOYALTY_TOMAN_PER_POINT, LOYALTY_POINT_VALUE_TOMAN
 
+API_VERSION = "3.2"
 app = FastAPI(title="Salon Bot Mini App API")
+logger = logging.getLogger("webapp_api")
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request, exc):
+    """خطای پیش‌بینی‌نشده‌ی سرور: توی لاگ ثبت می‌شه و یه پیام قابل‌فهم (JSON) برمی‌گرده، نه صفحه‌ی خالی."""
+    logger.exception("خطای پیش‌بینی‌نشده در %s", getattr(request, "url", ""))
+    detail = "خطای داخلی سرور" if os.getenv("HIDE_ERRORS") == "1" else f"خطای داخلی سرور ({type(exc).__name__}: {exc})"
+    return JSONResponse(status_code=500, content={"detail": detail})
 db.init_db()
 
 
@@ -110,7 +121,15 @@ def serve_index():
 
 @app.get("/api/config")
 def public_config():
-    return {"bot_username": BOT_USERNAME}
+    return {"bot_username": BOT_USERNAME, "api_version": API_VERSION}
+
+
+@app.get("/api/health")
+def health():
+    """بدون نیاز به ورود: بررسی می‌کنه فایل‌های سرور و دیتابیس باهم هماهنگ هستن یا نه."""
+    missing = db.schema_report()
+    return {"ok": not missing, "api_version": API_VERSION, "missing_columns": missing,
+            "index_html_found": _find_index_html() is not None}
 
 
 # =========================================================
@@ -418,14 +437,23 @@ def admin_dashboard(business_id: int, x_telegram_init_data: str = Header(default
     today = datetime.now().strftime("%Y-%m-%d")
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     month_start = datetime.now().strftime("%Y-%m-01")
-    has_staff = len(db.get_staff_list(business_id)) > 0
+    def part(fn, default):
+        # خرابی یه آمار نباید کل پنل مدیریت رو از کار بندازه
+        try:
+            return fn()
+        except Exception:
+            logger.exception("خطا در محاسبه‌ی آمار داشبورد")
+            return default
+
+    has_staff = part(lambda: len(db.get_staff_list(business_id)) > 0, False)
     # همه‌ی رزروهای جدید «سفارش» هستن؛ نوبت‌های قدیمی (اگه از قبل وجود داشته باشن) هم کنارش شمرده می‌شن
-    today_count = len(db.get_orders_by_date(business_id, today)) + len(db.get_appointments_by_date(business_id, today))
-    upcoming_count = len(db.get_all_upcoming_orders(business_id)) + len(db.get_all_upcoming_appointments(business_id))
-    month_row, _ = db.get_revenue_report(business_id, month_start, today)
-    avg, cnt = db.get_average_rating(business_id)
+    today_count = part(lambda: len(db.get_orders_by_date(business_id, today)) + len(db.get_appointments_by_date(business_id, today)), 0)
+    upcoming_count = part(lambda: len(db.get_all_upcoming_orders(business_id)) + len(db.get_all_upcoming_appointments(business_id)), 0)
+    month_row = part(lambda: db.get_revenue_report(business_id, month_start, today)[0], {"revenue": 0, "cnt": 0})
+    avg, cnt = part(lambda: tuple(db.get_average_rating(business_id)), (None, 0))
     return {
-        "business_name": biz["name"], "slug": biz["slug"], "shop_datetime": bool(biz["shop_datetime"]), "category": biz["category"], "has_staff": has_staff,
+        "business_name": biz["name"], "slug": biz["slug"], "shop_datetime": bool(biz.get("shop_datetime", 0)),
+        "category": biz.get("category"), "has_staff": has_staff,
         "today_count": today_count, "upcoming_count": upcoming_count,
         "month_revenue": month_row["revenue"], "month_count": month_row["cnt"],
         "avg_rating": avg, "review_count": cnt,

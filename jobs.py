@@ -5,6 +5,7 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
 import database as db
+import backup
 from config import REMINDER_CHECK_INTERVAL_SECONDS, REMINDER_24H_WINDOW_MINUTES, REMINDER_1H_WINDOW_MINUTES, LOYALTY_TOMAN_PER_POINT
 
 logger = logging.getLogger(__name__)
@@ -169,5 +170,15 @@ async def run_all_jobs(context: ContextTypes.DEFAULT_TYPE):
     await prompt_order_reviews(context)
 
 
+async def backup_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if await backup.make_backup(context.bot):
+            logger.info("🗄 پشتیبان جدید به تلگرام فرستاده شد")
+    except Exception as e:
+        logger.warning(f"پشتیبان‌گیری ناموفق بود: {e}")
+
+
 def register(app):
     app.job_queue.run_repeating(run_all_jobs, interval=REMINDER_CHECK_INTERVAL_SECONDS, first=10)
+    # هر ۶۰ ثانیه چک می‌کنه؛ فقط اگه دیتابیس تغییر کرده باشه پشتیبان می‌فرسته
+    app.job_queue.run_repeating(backup_job, interval=60, first=20)
