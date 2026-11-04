@@ -2,68 +2,161 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
+<meta name="theme-color" content="#071A36">
 <meta http-equiv="Cache-Control" content="no-store, max-age=0">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>رزرو نوبت</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800&display=swap" media="print" onload="this.media='all'">
 <style>
- :root{--bg:#0f1115;--card:#1a1d24;--card2:#22262f;--accent:#7c5cff;--accent2:#5ee6c2;--text:#f2f2f5;--muted:#9397a3;--border:#2a2e38;--danger:#ff5c7a;
-   box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);}
- @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f5f6f8;--card:#fff;--card2:#f0f1f4;--text:#1a1d24;--muted:#6b7080;--border:#e4e6eb;}}
- *{box-sizing:border-box}html,body{height:100%;margin:0}
- body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Tahoma,sans-serif;display:flex;justify-content:center}
- .app{width:100%;max-width:430px;min-height:100%;display:flex;flex-direction:column}
- header{padding:14px 16px 10px;position:sticky;top:0;background:var(--bg);padding-top:calc(14px + env(safe-area-inset-top,0px));z-index:5;border-bottom:1px solid var(--border)}
- header h1{font-size:16px;margin:0 0 2px}header p{margin:0;color:var(--muted);font-size:12.5px}
- main{flex:1;padding:14px;overflow-y:auto}
- .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:9px;cursor:pointer;transition:.15s}
- .card:active{transform:scale(.98)}.card.sel{border-color:var(--accent);background:var(--card2)}
- .row{display:flex;justify-content:space-between;align-items:center}
- .title{font-size:14.5px;font-weight:600}.sub{font-size:12px;color:var(--muted);margin-top:3px}
- .price{color:var(--accent2);font-size:12.5px;font-weight:600;white-space:nowrap}
- .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
- .slot{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 0;text-align:center;font-size:13px;cursor:pointer}
- .slot.sel{background:var(--accent);border-color:var(--accent);color:#fff}
- .srow{display:flex;justify-content:space-between;padding:8px 0;font-size:13px;border-bottom:1px solid var(--border)}.srow:last-child{border:none}.srow b{font-weight:600}
- footer{padding:11px 16px calc(13px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0}
- .btn{width:100%;padding:12px;border:none;border-radius:12px;font-size:14.5px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer;margin-top:6px}
- .btn:first-child{margin-top:0}.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
- .btn.sm{padding:7px 10px;width:auto;font-size:12px;margin:0}
- .empty{color:var(--muted);font-size:13px;text-align:center;padding:36px 10px}
- .success{text-align:center;padding:46px 10px}.success .emoji{font-size:48px;margin-bottom:8px}
- .menu2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
- .menu2 .mcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 10px;text-align:center;cursor:pointer}
- .menu2 .mcard .ic{font-size:22px;margin-bottom:6px}.menu2 .mcard .lb{font-size:12px;color:var(--text)}
- .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:9px}
- .stat .v{font-size:19px;font-weight:700}.stat .l{font-size:12px;color:var(--muted);margin-top:2px}
- .iconbtn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px}
- .link-box{background:var(--card2);border:1px dashed var(--border);border-radius:10px;padding:10px;font-size:12px;word-break:break-all;color:var(--accent2);margin-bottom:8px}
- .qr-box{background:#fff;border-radius:14px;padding:16px;display:flex;justify-content:center;margin-bottom:12px}
- .loading,.err{text-align:center;padding:50px 16px;color:var(--muted);font-size:13.5px}
- .field{margin-bottom:14px}
- .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
- .field .hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.7}
- .inp{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;outline:none;font-family:inherit}
- .inp:focus{border-color:var(--accent)}
- .seg{display:flex;gap:6px}
- .seg button{flex:1;padding:11px 6px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;cursor:pointer;font-family:inherit}
- .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
- .errline{color:var(--danger);font-size:12.5px;min-height:18px;margin:4px 0 0}
- .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:#222;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;z-index:60;max-width:90%;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.35)}
- .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:50}
- .sheet{width:100%;max-width:430px;background:var(--card);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
- .sheet h3{margin:0 0 6px;font-size:16px}.sheet p{margin:0 0 14px;font-size:13px;color:var(--muted);line-height:1.7}
+:root{
+  --navy:#071A36; --blue:#087BFF; --cyan:#12C8FF; --ink:#0560C9;
+  --bg:#F3F6FB; --surface:#FFFFFF; --surface2:#EEF3FA; --line:#E1E8F2;
+  --text:#071A36; --muted:#5A6B85; --danger:#D92D4B; --ok:#12A150; --warn:#B7791F;
+  --r-md:16px; --r-lg:22px;
+  --shadow:0 1px 2px rgba(7,26,54,.04),0 6px 18px rgba(7,26,54,.06);
+  --card:var(--surface); --card2:var(--surface2); --border:var(--line); --accent:var(--blue); --accent2:var(--ink);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);color-scheme:light;overflow-x:hidden;display:flex;justify-content:center;
+  font-family:'Vazirmatn','Vazir','IRANSansX','IRANSans','Segoe UI',Tahoma,system-ui,sans-serif;font-size:14px;line-height:1.75}
+button,input{font-family:inherit}
+.app{width:100%;max-width:480px;min-height:100%;display:flex;flex-direction:column;position:relative}
+header{background:linear-gradient(160deg,#071A36 0%,#0A2A5C 68%,#0B3A7E 100%);color:#fff;
+  padding:calc(12px + env(safe-area-inset-top,0px)) 18px 22px;border-radius:0 0 26px 26px;position:relative;z-index:5}
+.hrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;min-height:34px}
+.brand{display:flex;align-items:center;gap:8px}
+.logo{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg,#087BFF,#12C8FF);display:grid;place-items:center;box-shadow:0 4px 12px rgba(18,200,255,.35)}
+.logo svg{width:18px;height:18px}
+.bname{font-weight:800;font-size:15px}
+header h1{font-size:20px;margin:0 0 2px;font-weight:800;line-height:1.55}
+header p{margin:0;color:#B9C8E0;font-size:12.5px;min-height:19px}
+.hbtn{width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;cursor:pointer}
+.hbtn svg{width:19px;height:19px}
+.prog{height:4px;border-radius:4px;background:rgba(255,255,255,.16);margin-top:14px;overflow:hidden;display:none}
+.prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#087BFF,#12C8FF);border-radius:4px;transition:width .3s}
+main{flex:1;padding:18px 16px 24px}
+.dock{position:sticky;bottom:0;z-index:20;background:linear-gradient(180deg,rgba(243,246,251,0),var(--bg) 30%)}
+footer{padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px))}
+.dock.hasnav footer{padding-bottom:10px}
+footer:empty{display:none}
+footer .btn{margin-top:8px}footer .btn:first-child{margin-top:0}
+nav{display:none;background:#fff;border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 20px rgba(7,26,54,.06)}
+nav.on{display:flex}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;padding:4px;color:var(--muted);font-size:11.5px;font-weight:700;cursor:pointer;min-height:52px}
+nav button svg{width:22px;height:22px}
+.ni{width:52px;height:30px;display:grid;place-items:center;border-radius:15px;transition:background .2s}
+nav button.on{color:var(--blue)}nav button.on .ni{background:rgba(8,123,255,.12)}
+.btn{width:100%;padding:14px;min-height:48px;border:0;border-radius:14px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;
+  background:linear-gradient(135deg,#087BFF,#0A66DB);box-shadow:0 8px 18px rgba(8,123,255,.26);transition:transform .12s,opacity .2s;margin-top:8px}
+.btn:first-child{margin-top:0}
+.btn:active{transform:scale(.985)}
+.btn:disabled{opacity:.55;box-shadow:none}
+.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line);box-shadow:none}
+.btn.danger{background:var(--danger);box-shadow:none}
+.btn.sm{width:auto;padding:8px 12px;min-height:36px;font-size:13px;margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow);transition:transform .12s,border-color .2s}
+.card.tap{cursor:pointer}.card.tap:active{transform:scale(.985)}
+.card.sel{border-color:var(--blue);background:#F2F8FF}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.title{font-size:15px;font-weight:700;color:var(--navy)}
+.sub{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.7}
+.price{color:var(--navy);font-size:14px;font-weight:800;white-space:nowrap}
+.price small{font-size:11px;font-weight:600;color:var(--muted);margin-inline-start:3px}
+.go{color:#9AA9C0;display:grid;place-items:center}.go svg{width:18px;height:18px}
+.srow{display:flex;justify-content:space-between;gap:12px;padding:10px 0;font-size:13.5px;border-bottom:1px solid var(--line)}
+.srow:last-child{border:none}.srow span{color:var(--muted)}.srow b{font-weight:700;color:var(--navy);text-align:left}
+.hdr2{font-size:12.5px;color:var(--muted);margin:2px 2px 8px;font-weight:600}
+.sec{display:flex;justify-content:space-between;align-items:center;margin:22px 2px 10px}
+.sec h2{margin:0;font-size:15px;font-weight:800;color:var(--navy)}
+.sec a{font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer}
+.list{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:6px}
+.li{display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid var(--line);cursor:pointer;min-height:60px}
+.li:last-child{border-bottom:0}.li:active{background:var(--surface2)}
+.li .tx{flex:1;min-width:0}
+.ib{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;flex-shrink:0}.ib svg{width:20px;height:20px}
+.t-blue{background:#E3F1FF;color:#0560C9}.t-cyan{background:#DDF8FF;color:#0A8FB8}.t-navy{background:#E6EBF5;color:#071A36}
+.t-green{background:#DDF6E6;color:#0B7A3B}.t-amber{background:#FFF4DB;color:#8A5A00}.t-rose{background:#FFE5EA;color:#B3213D}
+.iconbtn{background:none;border:0;color:var(--muted);cursor:pointer;padding:8px;border-radius:10px;display:grid;place-items:center;min-width:40px;min-height:40px}
+.iconbtn svg{width:19px;height:19px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:var(--shadow);min-width:0}
+.metric .ib{width:34px;height:34px;border-radius:11px;margin-bottom:10px}.metric .ib svg{width:18px;height:18px}
+.metric .v{overflow-wrap:anywhere;font-size:22px;font-weight:800;color:var(--navy);line-height:1.3}
+.metric .v small{font-size:11px;font-weight:600;color:var(--muted);margin-inline-start:3px}
+.metric .l{font-size:12px;color:var(--muted)}
+.qa{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.qa button{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:8px;
+  color:var(--navy);font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:var(--shadow);min-height:92px}
+.qa button:active{transform:scale(.97)}
+.chip{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.chip.warn{background:#FFF4DB;color:#8A5A00}.chip.info{background:#E3F1FF;color:#0560C9}.chip.ok{background:#DDF6E6;color:#0B7A3B}
+.chip.muted{background:#EDF1F7;color:#5A6B85}.chip.danger{background:#FFE5EA;color:#B3213D}
+.tm{background:var(--surface2);border-radius:12px;padding:8px 6px;text-align:center;min-width:58px;font-weight:800;color:var(--navy);font-size:13.5px;flex-shrink:0}
+.tm small{display:block;font-size:10.5px;color:var(--muted);font-weight:600}
+.act{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);align-items:center}
+.act:last-child{border:0}.act .ib{width:34px;height:34px;border-radius:11px}.act .ib svg{width:17px;height:17px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.slot{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 0;text-align:center;font-size:14px;font-weight:700;cursor:pointer;color:var(--navy)}
+.slot.sel{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 6px 14px rgba(8,123,255,.3)}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:600}
+.field .hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.7}
+.inp{width:100%;padding:13px 14px;min-height:48px;border-radius:14px;border:1px solid var(--line);background:#fff;color:var(--navy);font-size:15px;outline:none;transition:border-color .2s,box-shadow .2s}
+.inp:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(8,123,255,.12)}
+.seg{display:flex;gap:6px;background:var(--surface2);padding:4px;border-radius:14px}
+.seg button{flex:1;padding:10px 6px;min-height:42px;border-radius:11px;border:0;background:transparent;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer}
+.seg button.on{background:#fff;color:var(--blue);box-shadow:0 2px 8px rgba(7,26,54,.1)}
+.errline{color:var(--danger);font-size:12.5px;min-height:20px;margin:4px 0 0;font-weight:600}
+.qty{display:flex;align-items:center;gap:10px}
+.qty button{width:40px;height:40px;border-radius:13px;border:1px solid var(--line);background:#fff;color:var(--navy);font-size:20px;font-weight:700;cursor:pointer;line-height:1;padding:0}
+.qty button:last-child{background:var(--blue);border-color:var(--blue);color:#fff}
+.qty span{min-width:22px;text-align:center;font-weight:800;color:var(--navy)}
+.empty{text-align:center;color:var(--muted);font-size:13.5px;padding:30px 14px;line-height:1.9}
+.empty .ib{margin:0 auto 10px;width:52px;height:52px;border-radius:18px}.empty .ib svg{width:24px;height:24px}
+.err{text-align:center;color:var(--muted);padding:40px 16px;line-height:1.9;white-space:pre-line}
+.loading{display:grid;place-items:center;padding:56px 0}
+.spin{width:30px;height:30px;border-radius:50%;border:3px solid #D6E4F7;border-top-color:var(--blue);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.success{text-align:center;padding:36px 10px}
+.success .ok-ring{width:86px;height:86px;border-radius:50%;margin:0 auto 16px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#087BFF,#12C8FF);box-shadow:0 12px 28px rgba(8,123,255,.35)}
+.success .ok-ring svg{width:40px;height:40px}
+.success h2{margin:0 0 6px;font-size:19px;color:var(--navy)}
+.link-box{background:var(--surface2);border:1px dashed #A9C4E8;border-radius:14px;padding:12px;font-size:13px;word-break:break-all;color:var(--ink);margin-bottom:10px;direction:ltr;text-align:left;font-weight:600}
+.qr-box{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px;display:flex;justify-content:center;margin-bottom:12px;box-shadow:var(--shadow)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:110px;background:var(--navy);color:#fff;padding:11px 18px;border-radius:14px;font-size:13px;font-weight:600;z-index:60;max-width:90%;text-align:center;box-shadow:0 8px 24px rgba(7,26,54,.35)}
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(7,26,54,.55);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+.sheet{width:100%;max-width:480px;background:#fff;border-radius:24px 24px 0 0;padding:20px 16px calc(18px + env(safe-area-inset-bottom,0px))}
+.sheet h3{margin:0 0 6px;font-size:16px;color:var(--navy)}.sheet p{margin:0 0 14px;font-size:13px;color:var(--muted);line-height:1.8;white-space:pre-line}
+.stat{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:10px;box-shadow:var(--shadow)}
+.stat .v{font-size:22px;font-weight:800;color:var(--navy);line-height:1.4}.stat .l{font-size:12.5px;color:var(--muted)}
+.hero{text-align:center;padding:26px 8px 10px}
+.hero .ib{width:72px;height:72px;border-radius:24px;margin:0 auto 16px;background:linear-gradient(135deg,#087BFF,#12C8FF);color:#fff;box-shadow:0 14px 30px rgba(8,123,255,.32)}
+.hero .ib svg{width:34px;height:34px}
+.hero h2{margin:0 0 8px;font-size:19px;color:var(--navy)}.hero p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.9}
+.emo{font-size:21px;line-height:1}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="app">
-  <header><h1 id="hT">در حال بارگذاری...</h1><p id="hS"></p></header>
-  <main id="main"><div class="loading">⏳ در حال اتصال...</div></main>
-  <footer id="foot"></footer>
+  <header id="hdr">
+    <div class="hrow">
+      <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14.5" rx="3.5"/><path d="M4 10h16M8.5 3.5v3.5M15.5 3.5v3.5M9 15l2.2 2.2L15.5 13"/></svg></span><span class="bname">نوبیتا</span></div>
+      <div id="hAct"></div>
+    </div>
+    <h1 id="hT">در حال بارگذاری...</h1><p id="hS"></p>
+    <div class="prog" id="prog"><i id="progBar"></i></div>
+  </header>
+  <main id="main"><div class="loading"><span class="spin"></span></div></main>
+  <div class="dock" id="dock"><footer id="foot"></footer><nav id="nav"></nav></div>
 </div>
 <script>
-const APP_VERSION = '۳.۳';
+const APP_VERSION = '۴.۰';
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 if(tg){ tg.ready(); tg.expand(); }
 const initData = tg ? tg.initData : "";
@@ -73,6 +166,7 @@ const qsBiz = params.get('biz');
 const isAdminMode = params.get('admin') === '1';
 
 const main=document.getElementById('main'), foot=document.getElementById('foot'), hT=document.getElementById('hT'), hS=document.getElementById('hS');
+const nav=document.getElementById('nav'), dock=document.getElementById('dock'), hAct=document.getElementById('hAct'), prog=document.getElementById('prog'), progBar=document.getElementById('progBar');
 
 async function api(path, opts={}){
   const res = await fetch(path, {
@@ -85,10 +179,68 @@ async function api(path, opts={}){
 }
 
 function el(html){const d=document.createElement('div');d.innerHTML=html.trim();return d.firstChild;}
-function card(title,sub,price,onClick,selected){const d=el(`<div class="card${selected?' sel':''}"><div class="row"><div><div class="title">${esc(title)}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>${price!=null?`<div class="price">${price.toLocaleString('fa-IR')} تومان</div>`:''}</div></div>`);if(onClick)d.onclick=onClick;return d;}
+function card(title,sub,price,onClick,selected){
+  const d=el(`<div class="card${selected?' sel':''}${onClick?' tap':''}"><div class="row"><div style="min-width:0"><div class="title">${esc(title)}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>${price!=null?`<div class="price">${price.toLocaleString('fa-IR')}<small>تومان</small></div>`:''}</div></div>`);
+  if(onClick) d.onclick=onClick; return d;
+}
 function btn(text,onClick,cls=''){const b=document.createElement('button');b.className='btn '+cls;b.textContent=text;b.onclick=onClick;return b;}
-function back(fn){foot.appendChild(btn('⬅️ بازگشت',fn,'ghost'));}
+function back(fn){foot.appendChild(btn('بازگشت',fn,'ghost'));}
 // ================= ابزارهای رابط: فرم، پنل پایین‌کشو، پیام کوچیک =================
+// ================= طراحی نوبیتا: آیکون‌ها و ابزارهای نمایش =================
+const ICONS={
+  home:'<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  orders:'<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4h6v3H9z"/><path d="M9 12h6M9 16h4"/>',
+  grid:'<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+  link:'<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',
+  briefcase:'<rect x="3" y="7" width="18" height="13" rx="3"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/>',
+  bag:'<path d="M5.5 8h13l1 12h-15z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+  user:'<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/>',
+  users:'<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.2c2.5.2 4.5 1.8 4.5 4.8"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  calendar:'<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  tag:'<path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.1 6.1a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8" cy="8" r="1.3"/>',
+  star:'<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9L3.5 9.7l5.9-.8z"/>',
+  chart:'<path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/>',
+  download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 19.5h15"/>',
+  shield:'<path d="M12 3l7.5 3v5.5c0 4.6-3.2 8-7.5 9.5-4.3-1.5-7.5-4.9-7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15 10.5"/>',
+  message:'<path d="M20.5 12a8 8 0 0 1-11.7 7.1L4 20.5l1.3-4.3A8 8 0 1 1 20.5 12z"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>', chev:'<path d="M14.5 6l-6 6 6 6"/>', check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  swap:'<path d="M7 7h12l-3-3M17 17H5l3 3"/>',
+  inbox:'<path d="M4 13l2.5-7.5A2 2 0 0 1 8.4 4h7.2a2 2 0 0 1 1.9 1.5L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 13h4.5l1 2h5l1-2H20"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>'
+};
+function ic(name,size){ return `<svg viewBox="0 0 24 24" width="${size||20}" height="${size||20}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`; }
+function money(n){ return n==null ? '—' : Number(n).toLocaleString('fa-IR'); }
+// تاریخ میلادی ISO → نمایش شمسی؛ اگه مرورگر پشتیبانی نکنه همون ISO نمایش داده می‌شه
+function faDate(iso,withWeekday){
+  try{
+    const [y,m,d]=String(iso).split('-').map(Number); const dt=new Date(y,m-1,d);
+    const o={day:'numeric',month:'long'}; if(withWeekday) o.weekday='long';
+    return dt.toLocaleDateString('fa-IR-u-ca-persian',o);
+  }catch(e){ return String(iso); }
+}
+const ORDER_STATUS={pending:['در انتظار','warn'],preparing:['در حال آماده‌سازی','info'],ready:['آماده تحویل','ok'],completed:['تحویل‌شده','muted'],cancelled:['لغوشده','danger']};
+function statusChip(st){ const x=ORDER_STATUS[st]||[st,'muted']; return `<span class="chip ${x[1]}">${esc(x[0])}</span>`; }
+function clearFoot(){ foot.innerHTML=''; hideNav(); setProgress(null); setHeaderAction(null); }
+function hideNav(){ if(nav){ nav.innerHTML=''; nav.className=''; } if(dock) dock.className='dock'; }
+function showNav(active, items){
+  if(!nav) return;
+  nav.innerHTML=''; nav.className='on'; if(dock) dock.className='dock hasnav';
+  items.forEach(it=>{
+    const b=document.createElement('button'); if(it.k===active) b.className='on';
+    b.innerHTML=`<span class="ni">${ic(it.icon,22)}</span><span>${it.label}</span>`;
+    b.onclick=it.onClick; nav.appendChild(b);
+  });
+}
+function setProgress(pct){ if(!prog) return; if(pct==null){ prog.style.display='none'; return; } prog.style.display='block'; if(progBar) progBar.style.width=pct+'%'; }
+function setHeaderAction(html,fn,label){ if(!hAct) return; hAct.innerHTML=''; if(!html) return; const b=document.createElement('button'); b.className='hbtn'; b.setAttribute('aria-label',label||'منو'); b.innerHTML=html; b.onclick=fn; hAct.appendChild(b); }
+function iconCard(icon,tone,title,sub,onClick){
+  const d=el(`<div class="card tap"><div class="row"><div style="display:flex;gap:12px;align-items:center;min-width:0"><span class="ib t-${tone}">${ic(icon)}</span><div style="min-width:0"><div class="title">${esc(title)}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div></div><span class="go">${ic('chev')}</span></div></div>`);
+  d.onclick=onClick; return d;
+}
+function emptyState(icon,text){ return el(`<div class="empty"><div class="ib t-blue">${ic(icon)}</div>${esc(text)}</div>`); }
+try{ if(tg){ tg.setHeaderColor && tg.setHeaderColor('#071A36'); tg.setBackgroundColor && tg.setBackgroundColor('#F3F6FB'); tg.setBottomBarColor && tg.setBottomBarColor('#FFFFFF'); } }catch(e){}
+
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // ارقام فارسی/عربی → انگلیسی (تا کاربر با کیبورد فارسی هم بتونه عدد بنویسه)
 function normDigits(str){
@@ -119,7 +271,7 @@ async function safe(fn){ try{ await fn(); }catch(e){ toast('❌ '+e.message); } 
 // فرم‌ساز عمومی. fields: {key,type:text|number|tel|date|time|seg|price,label,placeholder,value,hint,required,min,max,options,showIf,labelFn,validate}
 function showForm(cfg){
   hT.textContent=cfg.title; hS.textContent=cfg.subtitle||'';
-  main.innerHTML=''; foot.innerHTML='';
+  main.innerHTML=''; clearFoot();
   const nodes=[];
   const currentVals=()=>{ const v={}; nodes.forEach(n=>{ v[n.f.key]=n.get(); }); return v; };
   const refresh=()=>{
@@ -150,7 +302,7 @@ function showForm(cfg){
     }
     else if(f.type==='price'){
       let mode = (f.value===null) ? 'later' : 'fixed';
-      wrap.appendChild(mkSeg([{value:'fixed',label:'💰 قیمت ثابت دارم'},{value:'later',label:'💬 قیمت بعداً مشخص می‌شه'}],()=>mode,v=>{mode=v;}));
+      wrap.appendChild(mkSeg([{value:'fixed',label:'قیمت ثابت دارم'},{value:'later',label:'قیمت بعداً مشخص می‌شه'}],()=>mode,v=>{mode=v;}));
       const input=el('<input class="inp" type="text" inputmode="numeric" autocomplete="off" placeholder="مثلاً: 350000" style="margin-top:8px">');
       if(typeof f.value==='number') input.value=String(f.value);
       const live=el('<div class="hint"></div>');
@@ -205,17 +357,17 @@ function showForm(cfg){
       const e=validate(n,v[n.f.key],v);
       if(e){ err.textContent=e; if(n.focus) n.focus(); return; }
     }
-    const old=submit.textContent; submit.disabled=true; submit.textContent='⏳ لطفاً صبر کنید...'; err.textContent='';
+    const old=submit.textContent; submit.disabled=true; submit.textContent='لطفاً صبر کنید...'; err.textContent='';
     try{ await cfg.onSubmit(v); }
     catch(e){ err.textContent='❌ '+e.message; submit.disabled=false; submit.textContent=old; }
   });
   foot.appendChild(submit);
   (cfg.extraButtons||[]).forEach(b=>foot.appendChild(btn(b.label,b.onClick,b.cls||'ghost')));
-  foot.appendChild(btn('⬅️ بازگشت',cfg.onBack,'ghost'));
+  foot.appendChild(btn('بازگشت',cfg.onBack,'ghost'));
   setTimeout(()=>{ const first=nodes.find(n=>n.focus && n.wrap.style.display!=='none'); if(first && !cfg.noAutofocus) first.focus(); },150);
 }
 
-function showError(msg){main.innerHTML=`<div class="err">⚠️ ${msg}</div>`;foot.innerHTML='';}
+function showError(msg){ main.innerHTML=`<div class="err">${esc(msg)}</div>`; clearFoot(); }
 
 // ================= نمای مشتری (یکپارچه: سبد خرید + متخصص اختیاری) =================
 let biz=null;
@@ -267,9 +419,9 @@ function cartCount(){
 function addCustomerFooterExtras(){
   if(myBizCache && myBizCache.length){
     const mine = myBizCache.find(b=>b.id===biz.id) || myBizCache[0];
-    foot.appendChild(btn('🔧 ورود به پنل مدیریت «'+mine.name+'»',()=>{ startAdmin(mine.id); },'ghost'));
+    foot.appendChild(btn('ورود به پنل مدیریت «'+mine.name+'»',()=>{ startAdmin(mine.id); },'ghost'));
   } else {
-    foot.appendChild(btn('➕ کسب‌وکار خودم رو می‌خوام بسازم',()=>showCategoryPicker(()=>renderCart()),'ghost'));
+    foot.appendChild(btn('کسب‌وکار خودم رو می‌خوام بسازم',()=>showCategoryPicker(()=>renderCart()),'ghost'));
   }
 }
 
@@ -282,11 +434,12 @@ async function renderCart(){
     5: isSvc?'ساعت نوبت رو انتخاب کنید':'ساعت تحویل رو انتخاب کنید',
     6:'بررسی و تایید نهایی',7:''};
   hT.textContent=biz.name; hS.textContent=subs[cart.step]||'';
-  main.innerHTML='';foot.innerHTML='';
+  main.innerHTML='';clearFoot();
+  setProgress((cart.step>=1 && cart.step<=6) ? Math.round(cart.step/6*100) : null);
 
   if(cart.step===0){
-    main.appendChild(card('📅 رزرو خدمات', bizCatalog.service.length+' خدمت · انتخاب تاریخ، ساعت و متخصص', null, ()=>{ cart=newCart('service'); renderCart(); }));
-    main.appendChild(card('🛍 فروشگاه', bizCatalog.product.length+' محصول · سفارش با سبد خرید', null, ()=>{ cart=newCart('product'); renderCart(); }));
+    main.appendChild(iconCard('calendar','blue','رزرو خدمات', money(bizCatalog.service.length)+' خدمت · انتخاب تاریخ، ساعت و متخصص', ()=>{ cart=newCart('service'); renderCart(); }));
+    main.appendChild(iconCard('bag','cyan','فروشگاه', money(bizCatalog.product.length)+' محصول · سفارش با سبد خرید', ()=>{ cart=newCart('product'); renderCart(); }));
     addCustomerFooterExtras();
   }
 
@@ -298,7 +451,7 @@ async function renderCart(){
       const priceTxt = p.price!=null ? p.price.toLocaleString('fa-IR')+' تومان' : (isSvc?'💬 قیمت در جلسه مشخص می‌شود':'💬 قیمت در لحظه تحویل');
       const durTxt = (isSvc && p.duration_minutes) ? ' · '+p.duration_minutes+' دقیقه' : '';
       const row=el(`<div class="card"><div class="row"><div><div class="title">${esc(p.name)}</div><div class="sub">${priceTxt}${durTxt}</div></div>
-        <div class="row" style="gap:8px"><button class="btn sm">−</button><span style="min-width:18px;text-align:center">${qty}</span><button class="btn sm">+</button></div></div></div>`);
+        <div class="qty"><button aria-label="کم کردن">−</button><span>${qty}</span><button aria-label="اضافه کردن">+</button></div></div></div>`);
       const btns = row.querySelectorAll('button');
       btns[0].onclick=(e)=>{e.stopPropagation(); if(cart.items[p.id]){cart.items[p.id].qty--; if(cart.items[p.id].qty<=0) delete cart.items[p.id];} renderCart();};
       btns[1].onclick=(e)=>{e.stopPropagation(); if(!cart.items[p.id]) cart.items[p.id]={product:p, qty:0}; cart.items[p.id].qty++; renderCart();};
@@ -306,7 +459,7 @@ async function renderCart(){
     });
     const count = cartCount();
     foot.appendChild(btn(count? `🛒 ادامه (${count} قلم)` : 'سبد خرید خالیه', ()=>{ if(count){cart.step=2; renderCart();} }, count?'':'ghost'));
-    if(bizCatalog.service.length && bizCatalog.product.length) foot.appendChild(btn('⬅️ بازگشت',()=>{ resetCart(); renderCart(); },'ghost'));
+    if(bizCatalog.service.length && bizCatalog.product.length) foot.appendChild(btn('بازگشت',()=>{ resetCart(); renderCart(); },'ghost'));
     addCustomerFooterExtras();
   }
 
@@ -319,14 +472,14 @@ async function renderCart(){
     });
     const total = cartTotal();
     main.appendChild(el(`<div class="srow" style="margin-top:8px"><b>جمع کل</b><b>${total.toLocaleString('fa-IR')} تومان${cartHasUnpriced()?' + اقلام بدون قیمت ثابت':''}</b></div>`));
-    foot.appendChild(btn('➡️ ادامه',async()=>{
+    foot.appendChild(btn('ادامه',async()=>{
       if(!needsDT()){ cart.staff=null; cart.date=null; cart.time=null; cart.step=6; return renderCart(); }
       if(cart.kind==='product'){ cart.staff=null; cart.step=4; return renderCart(); }   // محصول فروشگاه متخصص نداره
       if(cart.staffList===null){ cart.staffList = await api(`/api/business/${biz.id}/staff`); }
       cart.step = cart.staffList.length ? 3 : 4;
       renderCart();
     }));
-    foot.appendChild(btn('⬅️ افزودن بیشتر',()=>{cart.step=1; renderCart();},'ghost'));
+    foot.appendChild(btn('افزودن بیشتر',()=>{cart.step=1; renderCart();},'ghost'));
   }
 
   else if(cart.step===3){
@@ -334,44 +487,44 @@ async function renderCart(){
     (cart.staffList||[]).forEach(s=>main.appendChild(card(s.name,'متخصص',null,()=>{cart.staff=s; cart.step=4; renderCart();})));
     main.appendChild(el('<div class="hdr2" style="margin-top:6px">یا</div>'));
     foot.appendChild(btn('بدون ترجیح خاص، ادامه بده',()=>{cart.staff=null; cart.step=4; renderCart();},'ghost'));
-    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=2; renderCart();},'ghost'));
+    foot.appendChild(btn('بازگشت',()=>{cart.step=2; renderCart();},'ghost'));
   }
 
   else if(cart.step===4){
     const dates=[]; const today=new Date();
     for(let i=0;i<10;i++){const d=new Date(today); d.setDate(d.getDate()+i); dates.push(d.toISOString().slice(0,10));}
-    dates.forEach(d=>main.appendChild(card(d,null,null,()=>{cart.date=d; cart.step=5; renderCart();})));
-    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=(cart.kind==='service'&&cart.staffList&&cart.staffList.length)?3:2; renderCart();},'ghost'));
+    dates.forEach((d,i)=>main.appendChild(card(faDate(d,true), i===0?'امروز':(i===1?'فردا':null), null, ()=>{cart.date=d; cart.step=5; renderCart();})));
+    foot.appendChild(btn('بازگشت',()=>{cart.step=(cart.kind==='service'&&cart.staffList&&cart.staffList.length)?3:2; renderCart();},'ghost'));
   }
 
   else if(cart.step===5){
-    main.innerHTML='<div class="loading">⏳</div>';
+    main.innerHTML='<div class="loading"><span class="spin"></span></div>';
     const slots = cart.staff
       ? await api(`/api/availability?business_id=${biz.id}&staff_id=${cart.staff.id}&date=${cart.date}&duration=${Math.max(cartDuration(),1)}`)
       : await api(`/api/business/${biz.id}/order-slots?date=${cart.date}`);
     main.innerHTML='';
-    if(!slots.length){main.appendChild(el('<div class="empty">این روز ظرفیتی نیست؛ روز دیگه رو امتحان کنید</div>'));foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=4;renderCart();},'ghost'));return;}
+    if(!slots.length){main.appendChild(el('<div class="empty">این روز ظرفیتی نیست؛ روز دیگه رو امتحان کنید</div>'));foot.appendChild(btn('بازگشت',()=>{cart.step=4;renderCart();},'ghost'));return;}
     const w=el('<div class="grid3"></div>');
     slots.forEach(t=>{const s=el(`<div class="slot">${t}</div>`); s.onclick=()=>{cart.time=t; cart.step=6; renderCart();}; w.appendChild(s);});
     main.appendChild(w);
-    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=4; renderCart();},'ghost'));
+    foot.appendChild(btn('بازگشت',()=>{cart.step=4; renderCart();},'ghost'));
   }
 
   else if(cart.step===6){
     const items=Object.values(cart.items);
     items.forEach(it=>main.appendChild(el(`<div class="srow"><span>${esc(it.product.name)} × ${it.qty}</span><span>${it.product.price!=null?(it.product.price*it.qty).toLocaleString('fa-IR')+' ت':'—'}</span></div>`)));
-    if(cart.staff) main.appendChild(el(`<div class="srow"><span>👤 متخصص</span><b>${esc(cart.staff.name)}</b></div>`));
-    if(needsDT()) main.appendChild(el(`<div class="srow"><span>📅 ${isSvc?'نوبت':'تحویل'}</span><b>${cart.date} ساعت ${cart.time}</b></div>`));
+    if(cart.staff) main.appendChild(el(`<div class="srow"><span>متخصص</span><b>${esc(cart.staff.name)}</b></div>`));
+    if(needsDT()) main.appendChild(el(`<div class="srow"><span>${isSvc?'نوبت':'تحویل'}</span><b>${cart.date} ساعت ${cart.time}</b></div>`));
     const total=cartTotal();
-    main.appendChild(el(`<div class="srow"><span>💰 جمع کل</span><b>${total.toLocaleString('fa-IR')} تومان${cartHasUnpriced()?' + موارد متغیر':''}</b></div>`));
+    main.appendChild(el(`<div class="srow"><span>جمع کل</span><b>${total.toLocaleString('fa-IR')} تومان${cartHasUnpriced()?' + موارد متغیر':''}</b></div>`));
     main.appendChild(el('<div class="hdr2" style="margin-top:14px">شماره تماس</div>'));
     const phoneInput=el('<input class="inp" type="text" inputmode="tel" autocomplete="tel" placeholder="مثلاً: 09123456789" style="direction:ltr;text-align:right">');
     main.appendChild(phoneInput);
     const phoneErr=el('<div class="errline"></div>'); main.appendChild(phoneErr);
-    const submitBtn=btn('✅ ثبت نهایی',async()=>{
+    const submitBtn=btn('ثبت نهایی',async()=>{
       const phone=normDigits(phoneInput.value).replace(/[^0-9+]/g,'');
       if(phone.replace(/\D/g,'').length<10){ phoneErr.textContent='شماره تماس معتبر وارد کنید'; phoneInput.focus(); return; }
-      phoneErr.textContent=''; submitBtn.disabled=true; submitBtn.textContent='⏳ در حال ثبت...';
+      phoneErr.textContent=''; submitBtn.disabled=true; submitBtn.textContent='در حال ثبت...';
       try{
         const body={business_id:biz.id, items:items.map(it=>({service_id:it.product.id, quantity:it.qty})),
           delivery_date: needsDT()?cart.date:null, delivery_time: needsDT()?cart.time:null,
@@ -383,99 +536,205 @@ async function renderCart(){
     });
     phoneInput.addEventListener('keydown',e=>{ if(e.key==='Enter') submitBtn.click(); });
     foot.appendChild(submitBtn);
-    foot.appendChild(btn('⬅️ بازگشت',()=>{cart.step=needsDT()?5:2; renderCart();},'ghost'));
+    foot.appendChild(btn('بازگشت',()=>{cart.step=needsDT()?5:2; renderCart();},'ghost'));
   }
 
   else if(cart.step===7){
-    main.innerHTML=`<div class="success"><div class="emoji">🎉</div><h2>${isSvc?'نوبت شما ثبت شد!':'سفارش شما ثبت شد!'}</h2><p style="color:var(--muted);font-size:13px">${needsDT() ? (isSvc?'نوبت: ':'تحویل: ')+cart.date+' ساعت '+cart.time : 'فروشنده برای هماهنگی با شما تماس می‌گیره.'}</p></div>`;
+    main.innerHTML=`<div class="success"><div class="ok-ring">${ic('check',40)}</div><h2>${isSvc?'نوبت شما ثبت شد!':'سفارش شما ثبت شد!'}</h2><p style="color:var(--muted);font-size:13px">${needsDT() ? (isSvc?'نوبت: ':'تحویل: ')+cart.date+' ساعت '+cart.time : 'فروشنده برای هماهنگی با شما تماس می‌گیره.'}</p></div>`;
     foot.appendChild(btn('بازگشت به منو',()=>{ resetCart(); renderCart(); }));
     if(tg) tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
   }
 }
 
 // ================= پنل مدیریت =================
+// ================= پنل مدیریت =================
 const ADM=[
- {k:'dash',ic:'📊',t:'داشبورد'},{k:'today',ic:'📅',t:'سفارش‌های امروز'},{k:'upcoming',ic:'📋',t:'سفارش‌های آینده'},
- {k:'services',ic:'💼',t:'مدیریت خدمات'},{k:'shop',ic:'🛍',t:'فروشگاه (محصولات)'},{k:'staff',ic:'👥',t:'مدیریت متخصص‌ها'},
- {k:'schedule',ic:'⏰',t:'برنامه کاری'},{k:'holidays',ic:'🏖',t:'تعطیلات'},{k:'discounts',ic:'🎟',t:'کدهای تخفیف'},
- {k:'reviews',ic:'⭐',t:'نظرات مشتریان'},{k:'revenue',ic:'📈',t:'گزارش درآمد'},{k:'csv',ic:'📄',t:'خروجی CSV'},
- {k:'admins',ic:'👑',t:'مدیریت ادمین‌ها'},{k:'feedback',ic:'💬',t:'بازخورد کاربران'},{k:'link',ic:'🔗',t:'لینک رزرو'},
+ {k:'home',t:'خانه'},{k:'today',t:'سفارش‌ها و نوبت‌ها'},{k:'upcoming',t:'سفارش‌ها و نوبت‌ها'},{k:'menu',t:'مدیریت'},{k:'link',t:'لینک رزرو'},
+ {k:'services',icon:'briefcase',tone:'blue',t:'مدیریت خدمات',d:'خدمات قابل رزرو، مدت و قیمت'},
+ {k:'shop',icon:'bag',tone:'cyan',t:'فروشگاه (محصولات)',d:'محصولات فروشگاه و تنظیم زمان تحویل'},
+ {k:'discounts',icon:'tag',tone:'amber',t:'کدهای تخفیف',d:'ساخت و مدیریت کدهای تخفیف'},
+ {k:'staff',icon:'users',tone:'blue',t:'مدیریت متخصص‌ها',d:'افزودن و ویرایش متخصص‌ها'},
+ {k:'schedule',icon:'clock',tone:'navy',t:'برنامه کاری',d:'ساعت کاری هر روز هفته'},
+ {k:'holidays',icon:'calendar',tone:'rose',t:'تعطیلات',d:'روزهایی که نوبت‌دهی بسته‌ست'},
+ {k:'reviews',icon:'star',tone:'amber',t:'نظرات مشتریان',d:'امتیاز و نظرهای ثبت‌شده'},
+ {k:'revenue',icon:'chart',tone:'green',t:'گزارش درآمد',d:'درآمد روزانه، هفتگی و ماهانه'},
+ {k:'csv',icon:'download',tone:'navy',t:'خروجی CSV',d:'دریافت فایل اکسل از سفارش‌ها'},
+ {k:'feedback',icon:'message',tone:'cyan',t:'بازخورد کاربران',d:'پیام‌ها و پیشنهادهای مشتریان'},
+ {k:'admins',icon:'shield',tone:'navy',t:'مدیریت ادمین‌ها',d:'دعوت و حذف ادمین‌ها'},
 ];
+const MANAGE_GROUPS=[
+ {title:'فروش و محصولات',items:['services','shop','discounts']},
+ {title:'برنامه‌ریزی',items:['staff','schedule','holidays']},
+ {title:'مشتریان و گزارش‌ها',items:['reviews','revenue','csv','feedback']},
+ {title:'حساب',items:['admins']},
+];
+const MAIN_TABS={home:'home',today:'orders',upcoming:'orders',menu:'menu',link:'link'};
+const LOADING='<div class="loading"><span class="spin"></span></div>';
 let adminInfo = null;
 function visibleAdm(){ return ADM; }
-let adminBizId=null, aScreen='menu';
+let adminBizId=null, aScreen='home';
+
+function adminNavItems(){
+  return [
+    {k:'home',icon:'home',label:'خانه',onClick:()=>{aScreen='home';renderAdmin();}},
+    {k:'orders',icon:'orders',label:'سفارش‌ها',onClick:()=>{aScreen='today';renderAdmin();}},
+    {k:'menu',icon:'grid',label:'مدیریت',onClick:()=>{aScreen='menu';renderAdmin();}},
+    {k:'link',icon:'link',label:'لینک رزرو',onClick:()=>{aScreen='link';renderAdmin();}},
+  ];
+}
+function setAdminHeader(t,sub){ hT.textContent=t; hS.textContent=sub||''; }
+function showAdminError(e){ main.innerHTML=''; main.appendChild(el('<div class="err"></div>')).textContent='⚠️ '+(e&&e.message?e.message:'خطا'); }
+async function switchBusiness(){ await safe(async()=>{ const me=await api('/api/me'); showMyBusinesses(me.businesses); }); }
 
 async function startAdmin(businessId){
   adminBizId = businessId;
   try{ adminInfo = await api(`/api/admin/${adminBizId}/dashboard`); }
   catch(e){
-    // فقط خطای ۴۰۳ یعنی «ادمین نیستید»؛ بقیه‌ی خطاها مشکل سرور/اتصاله و علتش نمایش داده می‌شه
-    main.innerHTML=''; foot.innerHTML='';
-    hT.textContent='پنل مدیریت'; hS.textContent='';
+    main.innerHTML=''; clearFoot(); hT.textContent='پنل مدیریت'; hS.textContent='';
     const msg = (e.status===403 || e.status===401 || e.status===404)
-      ? '⛔ شما ادمین این کسب‌وکار نیستید. اگه تازه کسب‌وکار ساخته بودید، ممکنه سرور ری‌استارت شده و اطلاعات هنوز برنگشته باشه؛ چند لحظه بعد دوباره امتحان کنید.'
-      : '⚠️ خطای سرور (کد '+(e.status||'?')+'): '+e.message+'\nمطمئن بشید همه‌ی فایل‌های پروژه (به‌خصوص database.py و webapp_api.py) آپدیت شدن.';
+      ? 'شما ادمین این کسب‌وکار نیستید.\nاگه تازه کسب‌وکار ساخته بودید، ممکنه سرور ری‌استارت شده و اطلاعات هنوز برنگشته باشه؛ چند لحظه بعد دوباره امتحان کنید.'
+      : 'خطای سرور (کد '+(e.status||'?')+'): '+e.message+'\nمطمئن بشید همه‌ی فایل‌های پروژه (به‌خصوص database.py و webapp_api.py) آپدیت شدن.';
     main.appendChild(el('<div class="err"></div>')).textContent = msg;
-    if(!(e.status===403 || e.status===401)) foot.appendChild(btn('🔄 تلاش دوباره',()=>startAdmin(businessId)));
-    foot.appendChild(btn('⬅️ بازگشت',goHome,'ghost'));
+    if(!(e.status===403 || e.status===401)) foot.appendChild(btn('تلاش دوباره',()=>startAdmin(businessId)));
+    foot.appendChild(btn('بازگشت',goHome,'ghost'));
     return;
   }
-  aScreen='menu'; renderAdmin();
+  aScreen='home'; renderAdmin();
+}
+
+async function openOrderSheet(o){
+  const nextOf={pending:'preparing',preparing:'ready',ready:'completed',completed:null,cancelled:null};
+  const label=(k)=>(ORDER_STATUS[k]||[k])[0];
+  const next=nextOf[o.status]; const buttons=[];
+  if(next) buttons.push({label:'تغییر وضعیت به «'+label(next)+'»',value:next});
+  if(o.status!=='completed' && o.status!=='cancelled') buttons.push({label:'لغو سفارش',value:'cancelled',cls:'danger'});
+  buttons.push({label:'بستن',value:null,cls:'ghost'});
+  const itemsTxt=(o.items||[]).map(i=>`${i.product_name} ×${i.quantity}`).join('، ');
+  const text=[ (o.user_name||'')+(o.user_phone?' · '+o.user_phone:''), itemsTxt, 'وضعیت فعلی: '+label(o.status) ].filter(Boolean).join('\n');
+  const choice = await sheet({title:'مدیریت سفارش #'+o.id, text, buttons});
+  if(!choice) return;
+  if(choice==='cancelled' && !(await askConfirm('لغو سفارش؟','این کار قابل برگشت نیست.','بله، لغو شود','نه'))) return;
+  await safe(async()=>{ await api(`/api/admin/${adminBizId}/orders/${o.id}/status`,{method:'POST',body:{status:choice}}); toast('وضعیت به‌روز شد ✅'); renderAdmin(); });
+}
+function orderCard(o){
+  const itemsTxt=(o.items||[]).map(i=>`${i.product_name} ×${i.quantity}`).join('، ');
+  const when = o.scheduled!==0
+    ? `<div class="tm">${esc(o.delivery_time)}<small>${esc(faDate(o.delivery_date))}</small></div>`
+    : `<div class="tm">#${o.id}<small>بدون زمان</small></div>`;
+  const staff = o.staff_name ? ' · '+o.staff_name : '';
+  const price = o.total_price!=null ? ' · '+money(o.total_price)+' تومان' : '';
+  const c=el(`<div class="card tap"><div class="row" style="align-items:flex-start">${when}<div style="flex:1;min-width:0"><div class="title">${esc(o.user_name||'مشتری')}</div><div class="sub">${esc(itemsTxt+staff+price)}</div></div>${statusChip(o.status)}</div></div>`);
+  c.onclick=()=>openOrderSheet(o); return c;
+}
+
+async function renderHome(){
+  const [d,today,recent] = await Promise.all([
+    api(`/api/admin/${adminBizId}/dashboard`), api(`/api/admin/${adminBizId}/orders/today`), api(`/api/admin/${adminBizId}/orders/recent`),
+  ]);
+  adminInfo = d;
+  const n=new Date(); const todayIso=`${n.getFullYear()}-${n.getMonth()+1}-${n.getDate()}`;
+  hT.textContent=d.business_name; hS.textContent=[d.category, faDate(todayIso,true)].filter(Boolean).join(' · ');
+  setHeaderAction(ic('swap'), switchBusiness, 'کسب‌وکارهای من');
+  main.innerHTML='';
+  const first = (typeof tgUser!=='undefined' && tgUser && tgUser.first_name) ? tgUser.first_name : '';
+  main.appendChild(el(`<div class="card" style="display:flex;gap:12px;align-items:center"><span class="ib t-blue">${ic('user')}</span><div><div class="title">${first?'سلام '+esc(first)+'، خوش اومدید':'خوش اومدید'}</div><div class="sub">${d.today_count? 'امروز '+money(d.today_count)+' سفارش یا نوبت دارید' : 'امروز هنوز سفارش یا نوبتی ثبت نشده'}</div></div></div>`));
+  const metric=(icon,tone,v,unit,l)=>`<div class="metric"><span class="ib t-${tone}">${ic(icon)}</span><div class="v">${v}${unit?`<small>${unit}</small>`:''}</div><div class="l">${l}</div></div>`;
+  main.appendChild(el(`<div class="metrics">
+    ${metric('calendar','blue',money(d.today_count),'','سفارش و نوبت امروز')}
+    ${metric('clock','cyan',money(d.upcoming_count),'','سفارش و نوبت آینده')}
+    ${metric('users','green',money(d.customer_count),'','مشتری‌ها')}
+    ${metric('chart','amber',money(d.month_revenue),'تومان','درآمد این ماه')}
+  </div>`));
+  main.appendChild(el('<div class="sec"><h2>دسترسی سریع</h2></div>'));
+  const qa=el('<div class="qa"></div>');
+  [['services','briefcase','blue','خدمات'],['shop','bag','cyan','فروشگاه'],['staff','users','blue','متخصص‌ها'],
+   ['schedule','clock','navy','برنامه کاری'],['discounts','tag','amber','تخفیف‌ها'],['revenue','chart','green','گزارش درآمد']].forEach(([k,icn,tone,label])=>{
+    const b=document.createElement('button'); b.innerHTML=`<span class="ib t-${tone}">${ic(icn)}</span><span>${label}</span>`;
+    b.onclick=()=>{aScreen=k;renderAdmin();}; qa.appendChild(b);
+  });
+  main.appendChild(qa);
+  const sec=el('<div class="sec"><h2>سفارش‌ها و نوبت‌های امروز</h2><a>همه</a></div>');
+  sec.querySelector('a').onclick=()=>{aScreen='today';renderAdmin();}; main.appendChild(sec);
+  if(!today.length) main.appendChild(emptyState('inbox','امروز هنوز سفارش یا نوبتی ثبت نشده'));
+  else today.slice(0,4).forEach(o=>main.appendChild(orderCard(o)));
+  if(recent.length){
+    main.appendChild(el('<div class="sec"><h2>فعالیت‌های اخیر</h2></div>'));
+    const box=el('<div class="list"></div>');
+    recent.slice(0,5).forEach(o=>{
+      const items=(o.items||[]).map(i=>`${i.product_name} ×${i.quantity}`).join('، ');
+      const cancelled=o.status==='cancelled'; const day=String(o.created_at||'').slice(0,10);
+      box.appendChild(el(`<div class="act"><span class="ib ${cancelled?'t-rose':'t-blue'}">${ic(cancelled?'x':'plus')}</span><div style="flex:1;min-width:0"><div class="title" style="font-size:13.5px">${esc(o.user_name||'مشتری')} ${cancelled?'سفارش را لغو کرد':'ثبت کرد'}</div><div class="sub">${esc(items)} · ${esc(faDate(day))}</div></div></div>`));
+    });
+    main.appendChild(box);
+  }
+}
+
+async function renderOrdersTab(){
+  setAdminHeader('سفارش‌ها و نوبت‌ها', adminInfo?adminInfo.business_name:'');
+  const list = await api(`/api/admin/${adminBizId}/orders/${aScreen==='today'?'today':'upcoming'}`);
+  main.innerHTML='';
+  const seg=el('<div class="seg" style="margin-bottom:14px"></div>');
+  [['today','امروز'],['upcoming','آینده']].forEach(([k,l])=>{
+    const b=document.createElement('button'); b.textContent=l; if(aScreen===k) b.className='on'; b.onclick=()=>{aScreen=k;renderAdmin();}; seg.appendChild(b);
+  });
+  main.appendChild(seg);
+  if(!list.length) main.appendChild(emptyState('inbox', aScreen==='today'?'امروز سفارش یا نوبتی نیست':'سفارش یا نوبت آینده‌ای نیست'));
+  else list.forEach(o=>main.appendChild(orderCard(o)));
+}
+
+function renderManage(){
+  setAdminHeader('مدیریت','همه‌ی بخش‌های '+(adminInfo?adminInfo.business_name:'کسب‌وکار'));
+  main.innerHTML='';
+  MANAGE_GROUPS.forEach(g=>{
+    main.appendChild(el(`<div class="hdr2" style="margin-top:8px">${g.title}</div>`));
+    const list=el('<div class="list"></div>');
+    g.items.forEach(k=>{
+      const a=ADM.find(x=>x.k===k);
+      const row=el(`<div class="li"><span class="ib t-${a.tone}">${ic(a.icon)}</span><div class="tx"><div class="title">${a.t}</div><div class="sub">${a.d}</div></div><span class="go">${ic('chev')}</span></div>`);
+      row.onclick=()=>{aScreen=k;renderAdmin();}; list.appendChild(row);
+    });
+    main.appendChild(list);
+  });
+  const extra=el('<div style="margin-top:16px"></div>'); main.appendChild(extra);
+  extra.appendChild(btn('کسب‌وکارهای من / ساخت کسب‌وکار جدید',switchBusiness,'ghost'));
+  if(biz){ extra.appendChild(btn('مشاهده صفحه‌ی مشتری',async()=>{
+    try{ biz = await api('/api/business/by-slug/'+biz.slug); await loadCatalog(); myBizCache = await api('/api/my-businesses'); }catch(e){}
+    resetCart(); renderCart();
+  },'ghost')); }
+}
+
+async function renderLinkTab(){
+  setAdminHeader('لینک رزرو','این لینک یا QR رو برای مشتری‌ها بفرستید');
+  const d = await api(`/api/admin/${adminBizId}/dashboard`);
+  const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
+  const link = 'https://t.me/'+cfg.bot_username+'?start='+d.slug;
+  main.innerHTML='';
+  const qrBox = el('<div class="qr-box"><div id="qrcanvas"></div></div>'); main.appendChild(qrBox);
+  const lb=el('<div class="link-box"></div>'); lb.textContent=link; main.appendChild(lb);
+  try{ new QRCode(qrBox.querySelector('#qrcanvas'), {text:link, width:176, height:176, colorDark:'#071A36', colorLight:'#ffffff'}); }catch(e){ qrBox.remove(); }
+  main.appendChild(btn('کپی لینک',()=>{ try{ navigator.clipboard.writeText(link); toast('کپی شد ✅'); }catch(e){ toast(link); } }));
+  main.appendChild(btn('دانلود تصویر QR',()=>{
+    const img = qrBox.querySelector('img,canvas'); if(!img){ toast('QR ساخته نشد'); return; }
+    const a=document.createElement('a'); a.download='qr-'+(d.slug||'link')+'.png'; a.href = img.tagName==='CANVAS' ? img.toDataURL('image/png') : img.src; a.click();
+  },'ghost'));
 }
 
 async function renderAdmin(){
-  hT.textContent='پنل مدیریت'; hS.textContent=aScreen==='menu'?'یک بخش رو انتخاب کنید':(ADM.find(a=>a.k===aScreen)||{}).t||'';
-  main.innerHTML='<div class="loading">⏳</div>';foot.innerHTML='';
-  if(aScreen==='menu'){
-    main.innerHTML='';
-    const g=el('<div class="menu2"></div>');
-    visibleAdm().forEach(a=>{const c=el(`<div class="mcard"><div class="ic">${a.ic}</div><div class="lb">${a.t}</div></div>`);c.onclick=()=>{aScreen=a.k;renderAdmin();};g.appendChild(c);});
-    main.appendChild(g);
-    foot.appendChild(btn('🔁 کسب‌وکارهای من / ساخت کسب‌وکار جدید',async()=>{ const me=await api('/api/me'); showMyBusinesses(me.businesses); },'ghost'));
-    if(biz){ foot.appendChild(btn('⬅️ بازگشت به صفحه رزرو',async()=>{
-      try{ biz = await api('/api/business/by-slug/'+biz.slug); await loadCatalog(); myBizCache = await api('/api/my-businesses'); }catch(e){}
-      resetCart(); renderCart();
-    },'ghost')); }
-    return;
-  }
-  back(()=>{aScreen='menu';renderAdmin();});
+  clearFoot();
+  const tab=MAIN_TABS[aScreen];
+  if(tab) showNav(tab, adminNavItems());
+  main.innerHTML=LOADING;
   try{
-    if(aScreen==='dash'){
-      const d = await api(`/api/admin/${adminBizId}/dashboard`);
-      main.innerHTML='';
-      adminInfo = d;
-      main.appendChild(el(`<div class="stat"><div class="v">${d.today_count}</div><div class="l">سفارش و نوبت امروز</div></div>`));
-      main.appendChild(el(`<div class="stat"><div class="v">${d.upcoming_count}</div><div class="l">سفارش و نوبت‌های آینده</div></div>`));
-      main.appendChild(el(`<div class="stat"><div class="v">${d.month_revenue.toLocaleString('fa-IR')} تومان</div><div class="l">درآمد این ماه (${d.month_count} سفارش)</div></div>`));
-      main.appendChild(el(`<div class="stat"><div class="v">⭐ ${d.avg_rating?d.avg_rating.toFixed(1):'-'} / ۵</div><div class="l">${d.review_count} نظر</div></div>`));
-    }
-    else if(aScreen==='today' || aScreen==='upcoming'){
-      const endpoint = aScreen==='today' ? 'today' : 'upcoming';
-      const list = await api(`/api/admin/${adminBizId}/orders/${endpoint}`);
-      main.innerHTML='';
-      if(!list.length){main.appendChild(el(`<div class="empty">${aScreen==='today'?'امروز سفارشی نیست':'سفارش آینده‌ای نیست'}</div>`));return;}
-      const statusFa={pending:'⏳ در انتظار',preparing:'👩‍🍳 در حال آماده‌سازی',ready:'✅ آماده تحویل',completed:'📦 تحویل‌شده',cancelled:'❌ لغوشده'};
-      list.forEach(o=>{
-        const itemsTxt = (o.items||[]).map(i=>`${esc(i.product_name)} ×${i.quantity}`).join('، ');
-        const staffTxt = o.staff_name ? ' | 👤 '+o.staff_name : '';
-        const orderTitle = o.scheduled===0 ? ('سفارش #'+o.id+' · '+String(o.created_at||'').slice(0,16).replace('T',' ')) : (o.delivery_date+' - '+o.delivery_time);
-        const c=el(`<div class="card"><div class="row"><div><div class="title">${esc(orderTitle)}</div><div class="sub">${esc(itemsTxt)}${esc(staffTxt)}</div><div class="sub">${esc(o.user_name)} | ${esc(o.user_phone)} | ${statusFa[o.status]||o.status}</div></div><button class="iconbtn">⚙️</button></div></div>`);
-        c.querySelector('button').onclick=async(e)=>{
-          e.stopPropagation();
-          const next={pending:'preparing',preparing:'ready',ready:'completed',completed:null,cancelled:null}[o.status];
-          const buttons=[];
-          if(next) buttons.push({label:'➡️ '+statusFa[next],value:next});
-          if(o.status!=='completed' && o.status!=='cancelled') buttons.push({label:'❌ لغو سفارش',value:'cancelled',cls:'ghost'});
-          buttons.push({label:'بستن',value:null,cls:'ghost'});
-          const choice = await sheet({title:'وضعیت سفارش', text:'وضعیت فعلی: '+(statusFa[o.status]||o.status), buttons});
-          if(!choice) return;
-          if(choice==='cancelled' && !(await askConfirm('لغو سفارش؟','این کار قابل برگشت نیست.','بله، لغو شود','نه'))) return;
-          await safe(async()=>{ await api(`/api/admin/${adminBizId}/orders/${o.id}/status`,{method:'POST',body:{status:choice}}); toast('وضعیت به‌روز شد ✅'); renderAdmin(); });
-        };
-        main.appendChild(c);
-      });
-    }
-    else if(aScreen==='services' || aScreen==='shop'){
+    if(aScreen==='home'){ await renderHome(); return; }
+    if(aScreen==='menu'){ renderManage(); return; }
+    if(aScreen==='today' || aScreen==='upcoming'){ await renderOrdersTab(); return; }
+    if(aScreen==='link'){ await renderLinkTab(); return; }
+  }catch(e){ showAdminError(e); return; }
+  const sec=ADM.find(a=>a.k===aScreen);
+  hT.textContent = sec?sec.t:'مدیریت'; hS.textContent = adminInfo?adminInfo.business_name:'';
+  const addBack=()=>back(()=>{aScreen='menu';renderAdmin();});   // دکمه‌ی اصلی هر صفحه اول، «بازگشت» آخر
+  try{
+    if(aScreen==='services' || aScreen==='shop'){
       const isShop = aScreen==='shop';
       const kind = isShop ? 'product' : 'service';
       const list = await api(`/api/admin/${adminBizId}/services?kind=${kind}`);
@@ -483,7 +742,7 @@ async function renderAdmin(){
       if(isShop){
         const d = await api(`/api/admin/${adminBizId}/dashboard`);
         adminInfo = d;
-        main.appendChild(card('📅 تاریخ و ساعت تحویل سفارش‌ها',
+        main.appendChild(card('تاریخ و ساعت تحویل سفارش‌ها',
           d.shop_datetime ? 'روشن — مشتری موقع سفارش، تاریخ و ساعت تحویل هم انتخاب می‌کنه (برای کیک و غذا مناسبه)'
                           : 'خاموش — مشتری فقط سبد خرید رو ثبت می‌کنه (مناسب فروشگاه). برای کیک و غذا می‌تونید روشنش کنید',
           null, async()=>{
@@ -500,14 +759,14 @@ async function renderAdmin(){
         const sub = (isShop ? 'محصول' : s.duration_minutes+' دقیقه')+(s.active?'':' (غیرفعال)')+(s.price==null?' · بدون قیمت ثابت':'');
         main.appendChild(card(s.name,sub,s.price,()=>openCatalogForm(kind,s)));
       });
-      foot.appendChild(btn(isShop?'➕ افزودن محصول':'➕ افزودن خدمت',()=>openCatalogForm(kind,null)));
+      foot.appendChild(btn(isShop?'افزودن محصول':'افزودن خدمت',()=>openCatalogForm(kind,null)));
     }
     else if(aScreen==='staff'){
       const list = await api(`/api/admin/${adminBizId}/staff`);
       main.innerHTML='';
       if(!list.length) main.appendChild(el('<div class="empty">هنوز متخصصی اضافه نکردید (اختیاریه)</div>'));
       list.forEach(s=>main.appendChild(card(s.name+(s.active?'':' (غیرفعال)'),'برای ویرایش بزنید',null,()=>openStaffForm(s))));
-      foot.appendChild(btn('➕ افزودن متخصص',()=>openStaffForm(null)));
+      foot.appendChild(btn('افزودن متخصص',()=>openStaffForm(null)));
     }
     else if(aScreen==='schedule'){
       const list = await api(`/api/admin/${adminBizId}/schedule`);
@@ -534,14 +793,14 @@ async function renderAdmin(){
         };
         main.appendChild(c);
       });
-      foot.appendChild(btn('➕ افزودن تعطیلی',()=>openHolidayForm()));
+      foot.appendChild(btn('افزودن تعطیلی',()=>openHolidayForm()));
     }
     else if(aScreen==='discounts'){
       const list = await api(`/api/admin/${adminBizId}/discounts`);
       main.innerHTML='';
       list.forEach(d=>{const v=d.discount_type==='percent'?d.value+'٪':d.value.toLocaleString('fa-IR')+' ت';main.appendChild(el(`<div class="card"><div class="title">${esc(d.code)}</div><div class="sub">تخفیف ${v} | استفاده ${d.used_count}/${d.usage_limit||'∞'}</div></div>`));});
       if(!list.length) main.appendChild(el('<div class="empty">هنوز کد تخفیفی نساختید</div>'));
-      foot.appendChild(btn('➕ ساخت کد تخفیف',()=>openDiscountForm()));
+      foot.appendChild(btn('ساخت کد تخفیف',()=>openDiscountForm()));
     }
     else if(aScreen==='reviews'){
       const d = await api(`/api/admin/${adminBizId}/reviews`);
@@ -557,41 +816,21 @@ async function renderAdmin(){
     }
     else if(aScreen==='csv'){
       main.innerHTML='<div class="empty">فایل CSV شامل تمام نوبت‌هاست</div>';
-      foot.appendChild(btn('⬇️ دانلود خروجی CSV',()=>{window.open(`/api/admin/${adminBizId}/export-csv?x=${encodeURIComponent(initData)}`,'_blank');}));
+      foot.appendChild(btn('دانلود خروجی CSV',()=>{window.open(`/api/admin/${adminBizId}/export-csv?x=${encodeURIComponent(initData)}`,'_blank');}));
     }
     else if(aScreen==='admins'){
       const d = await api(`/api/admin/${adminBizId}/admins`);
       main.innerHTML='';
       d.admins.forEach(a=>main.appendChild(el(`<div class="card"><div class="row"><span>${a.telegram_id===d.owner_id?'👑':'👤'} ${a.telegram_id}</span></div></div>`)));
-      foot.appendChild(btn('🎫 ساخت کد دعوت ادمین',()=>safe(async()=>{ const r=await api(`/api/admin/${adminBizId}/admins/invite`,{method:'POST'}); showInviteCode(r.code); })));
-    }
-    else if(aScreen==='link'){
-      const d = await api(`/api/admin/${adminBizId}/dashboard`);
-      const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
-      const link = 'https://t.me/'+cfg.bot_username+'?start='+d.slug;
-      main.innerHTML='';
-      main.appendChild(el('<div class="sub" style="margin-bottom:8px">مشتری‌ها می‌تونن با اسکن این کد یا زدن روی لینک، مستقیم وارد رزرو بشن:</div>'));
-      const qrBox = el('<div class="qr-box"><div id="qrcanvas"></div></div>');
-      main.appendChild(qrBox);
-      main.appendChild(el(`<div class="link-box">${link}</div>`));
-      // ساخت QR Code (اگه به هر دلیلی اسکریپتش لود نشه، بی‌سروصدا فقط لینک متنی می‌مونه)
-      try{ new QRCode(qrBox.querySelector('#qrcanvas'), {text:link, width:160, height:160, colorDark:'#000000', colorLight:'#ffffff'}); }catch(e){ qrBox.remove(); }
-      foot.appendChild(btn('📋 کپی لینک',()=>{ try{ navigator.clipboard.writeText(link); toast('کپی شد ✅'); }catch(e){ toast(link); } }));
-      foot.appendChild(btn('⬇️ دانلود تصویر QR',()=>{
-        const img = qrBox.querySelector('img,canvas');
-        if(!img){ toast('QR ساخته نشد'); return; }
-        const a=document.createElement('a');
-        a.download='qr-'+(d.slug||'link')+'.png';
-        a.href = img.tagName==='CANVAS' ? img.toDataURL('image/png') : img.src;
-        a.click();
-      },'ghost'));
+      foot.appendChild(btn('ساخت کد دعوت ادمین',()=>safe(async()=>{ const r=await api(`/api/admin/${adminBizId}/admins/invite`,{method:'POST'}); showInviteCode(r.code); })));
     }
     else if(aScreen==='feedback'){
       const list = await api(`/api/admin/${adminBizId}/feedback`);
       main.innerHTML='';
       list.length? list.forEach(f=>main.appendChild(el(`<div class="card"><div class="title">${esc(f.user_name||'-')}</div><div class="sub">${esc(f.text)}</div></div>`))) : main.appendChild(el('<div class="empty">بازخوردی ثبت نشده</div>'));
     }
-  }catch(e){ main.innerHTML=''; main.appendChild(el(`<div class="empty">⚠️ ${e.message}</div>`)); }
+    addBack();
+  }catch(e){ showAdminError(e); addBack(); }
 }
 
 // ================= ساخت کسب‌وکار: انتخاب صنف (مثل اینستاگرام) =================
@@ -609,28 +848,28 @@ const CATEGORIES = [
 
 function renderLanding(){
   hT.textContent='نوبت‌دهی و سفارش آنلاین'; hS.textContent='نسخه '+APP_VERSION;
-  main.innerHTML=''; foot.innerHTML='';
-  main.appendChild(el('<div class="empty">برای رزرو، از لینک اختصاصی یک کسب‌وکار وارد بشید.</div>'));
-  foot.appendChild(btn('➕ ساخت کسب‌وکار من',showCategoryPicker));
+  main.innerHTML=''; clearFoot();
+  main.appendChild(el(`<div class="hero"><div class="ib">${ic('calendar')}</div><h2>به نوبیتا خوش اومدید</h2><p>برای رزرو، از لینک اختصاصی یک کسب‌وکار وارد بشید.<br>اگه صاحب کسب‌وکار هستید، همین‌جا کسب‌وکار خودتون رو بسازید.</p></div>`));
+  foot.appendChild(btn('ساخت کسب‌وکار من',showCategoryPicker));
 }
 
 function showCategoryPicker(returnFn){
   returnFn = returnFn || goHome;
   hT.textContent='صنف کسب‌وکارتون چیه؟';
   hS.textContent='فروشگاه و محصولات رو بعداً از داخل پنل مدیریت اضافه می‌کنید';
-  main.innerHTML=''; foot.innerHTML='';
+  main.innerHTML=''; clearFoot();
   let lastGroup=null;
   CATEGORIES.forEach(c=>{
     if(c.g!==lastGroup){ main.appendChild(el(`<div class="hdr2" style="margin-top:12px;font-weight:600">${c.g}</div>`)); lastGroup=c.g; }
-    main.appendChild(card(c.ic+' '+c.label, null, null, ()=>showBusinessNameForm(c, returnFn)));
+    { const row=el(`<div class="card tap"><div class="row"><div style="display:flex;gap:12px;align-items:center"><span class="ib t-blue emo">${c.ic}</span><div class="title">${esc(c.label)}</div></div><span class="go">${ic('chev')}</span></div></div>`); row.onclick=()=>showBusinessNameForm(c, returnFn); main.appendChild(row); }
   });
-  foot.appendChild(btn('⬅️ انصراف',returnFn,'ghost'));
+  foot.appendChild(btn('انصراف',returnFn,'ghost'));
 }
 
 // ================= صفحه‌ی نام کسب‌وکار (بعد از انتخاب صنف) =================
 function showBusinessNameForm(c, returnFn){
   hT.textContent='نام کسب‌وکار'; hS.textContent='آخرین قدم؛ یه اسم برای کسب‌وکارتون بنویسید';
-  main.innerHTML=''; foot.innerHTML='';
+  main.innerHTML=''; clearFoot();
   main.appendChild(el(`<div class="card" style="cursor:default"><div class="row"><div><div class="title">${c.ic} ${c.label}</div>
     <div class="sub">بعد از ساخت، از پنل مدیریت خدمات و فروشگاه رو اضافه می‌کنید</div></div>
     <button class="iconbtn" id="chgcat" style="font-size:12px;color:var(--accent)">تغییر</button></div></div>`));
@@ -640,10 +879,10 @@ function showBusinessNameForm(c, returnFn){
   main.appendChild(input);
   const err=el('<div class="sub" style="color:var(--danger);margin-top:8px;min-height:18px"></div>');
   main.appendChild(err);
-  const create = btn('✅ ساخت کسب‌وکار', async()=>{
+  const create = btn('ساخت کسب‌وکار', async()=>{
     const name=input.value.trim();
     if(name.length<2){ err.textContent='اسم کسب‌وکار رو بنویسید (حداقل ۲ حرف)'; input.focus(); return; }
-    create.disabled=true; create.textContent='⏳ در حال ساخت...'; err.textContent='';
+    create.disabled=true; create.textContent='در حال ساخت...'; err.textContent='';
     try{
       const r = await api('/api/businesses',{method:'POST',body:{name, category:c.label}});
       showBusinessCreated(name, r);
@@ -651,7 +890,7 @@ function showBusinessNameForm(c, returnFn){
   });
   input.addEventListener('keydown',e=>{ if(e.key==='Enter') create.click(); });
   foot.appendChild(create);
-  foot.appendChild(btn('⬅️ بازگشت',()=>showCategoryPicker(returnFn),'ghost'));
+  foot.appendChild(btn('بازگشت',()=>showCategoryPicker(returnFn),'ghost'));
   setTimeout(()=>input.focus(),150);
 }
 
@@ -659,12 +898,12 @@ async function showBusinessCreated(name, r){
   const cfg = await fetch('/api/config').then(x=>x.json()).catch(()=>({bot_username:'YourBot'}));
   const link = 'https://t.me/'+cfg.bot_username+'?start='+r.slug;
   hT.textContent='🎉 کسب‌وکار ساخته شد'; hS.textContent=name;
-  main.innerHTML=''; foot.innerHTML='';
+  main.innerHTML=''; clearFoot();
   main.appendChild(el('<div class="sub" style="margin-bottom:8px">این لینک اختصاصی مشتری‌هاته؛ براشون بفرستید:</div>'));
   main.appendChild(el(`<div class="link-box">${link}</div>`));
   main.appendChild(el('<div class="sub" style="margin-top:10px">قدم بعدی: وارد پنل مدیریت بشید و خدمات‌تون (و اگه خواستید محصولات فروشگاه) رو اضافه کنید.</div>'));
-  foot.appendChild(btn('🔧 ورود به پنل مدیریت',()=>startAdmin(r.business_id)));
-  foot.appendChild(btn('📋 کپی لینک',()=>{ try{ navigator.clipboard.writeText(link); toast('کپی شد ✅'); }catch(e){ toast(link); } },'ghost'));
+  foot.appendChild(btn('ورود به پنل مدیریت',()=>startAdmin(r.business_id)));
+  foot.appendChild(btn('کپی لینک',()=>{ try{ navigator.clipboard.writeText(link); toast('کپی شد ✅'); }catch(e){ toast(link); } },'ghost'));
 }
 
 // ================= فرم‌های پنل مدیریت =================
@@ -679,14 +918,14 @@ function openCatalogForm(kind,item){
       ...(isShop?[]:[{key:'duration',type:'number',label:'مدت انجام (دقیقه)',value:item?item.duration_minutes:30,min:5,max:600,hint:'برای محاسبه‌ی ساعت‌های خالی استفاده می‌شه'}]),
       {key:'price',type:'price',label:'قیمت (تومان)',value:item?item.price:undefined,hint:'اگه قیمت ثابت نیست (مثلاً به‌خاطر نوسان نرخ ارز)، «قیمت بعداً مشخص می‌شه» رو بزنید'},
     ],
-    submitText: editing?'💾 ذخیره‌ی تغییرات':(isShop?'➕ افزودن محصول':'➕ افزودن خدمت'),
+    submitText: editing?'ذخیره‌ی تغییرات':(isShop?'افزودن محصول':'افزودن خدمت'),
     onSubmit: async(v)=>{
       const body={name:v.name,duration_minutes:isShop?0:v.duration,price:v.price,kind};
       if(editing) await api(`/api/admin/services/${item.id}`,{method:'PATCH',body});
       else await api(`/api/admin/${adminBizId}/services`,{method:'POST',body});
       toast(editing?'ذخیره شد ✅':'اضافه شد ✅'); backFn();
     },
-    extraButtons: editing ? [{label:item.active?'🗑 غیرفعال کردن (از دید مشتری پنهان می‌شه)':'✅ فعال کردن دوباره',
+    extraButtons: editing ? [{label:item.active?'غیرفعال کردن (از دید مشتری پنهان می‌شه)':'فعال کردن دوباره',
       onClick:()=>safe(async()=>{ await api(`/api/admin/services/${item.id}`,{method:'DELETE'}); toast(item.active?'غیرفعال شد':'فعال شد ✅'); backFn(); })}] : [],
     onBack: backFn,
   });
@@ -697,13 +936,13 @@ function openStaffForm(item){
   showForm({
     title: editing?'ویرایش متخصص':'افزودن متخصص', subtitle:'مشتری می‌تونه موقع رزرو خدمات، متخصص انتخاب کنه',
     fields:[{key:'name',type:'text',label:'نام متخصص',placeholder:'مثلاً: سارا احمدی',value:item?item.name:'',required:true,max:60}],
-    submitText: editing?'💾 ذخیره‌ی تغییرات':'➕ افزودن متخصص',
+    submitText: editing?'ذخیره‌ی تغییرات':'افزودن متخصص',
     onSubmit: async(v)=>{
       if(editing) await api(`/api/admin/staff/${item.id}`,{method:'PATCH',body:{name:v.name}});
       else await api(`/api/admin/${adminBizId}/staff`,{method:'POST',body:{name:v.name}});
       toast(editing?'ذخیره شد ✅':'اضافه شد ✅'); backFn();
     },
-    extraButtons: editing ? [{label:item.active?'🗑 غیرفعال کردن':'✅ فعال کردن دوباره',
+    extraButtons: editing ? [{label:item.active?'غیرفعال کردن':'فعال کردن دوباره',
       onClick:()=>safe(async()=>{ await api(`/api/admin/staff/${item.id}`,{method:'DELETE'}); toast(item.active?'غیرفعال شد':'فعال شد ✅'); backFn(); })}] : [],
     onBack: backFn,
   });
@@ -717,7 +956,7 @@ function openHolidayForm(){
       {key:'date',type:'date',label:'تاریخ',required:true,minToday:true},
       {key:'reason',type:'text',label:'توضیح (اختیاری)',placeholder:'مثلاً: تعطیلات رسمی',max:60,required:false},
     ],
-    submitText:'➕ ثبت تعطیلی',
+    submitText:'ثبت تعطیلی',
     onSubmit: async(v)=>{ await api(`/api/admin/${adminBizId}/holidays`,{method:'POST',body:{date:v.date,reason:v.reason||''}}); toast('ثبت شد ✅'); backFn(); },
     onBack: backFn,
   });
@@ -730,13 +969,13 @@ function openDiscountForm(){
     fields:[
       {key:'code',type:'text',label:'کد تخفیف',placeholder:'مثلاً: SUMMER20',required:true,max:20,
         validate:(v)=>/^[A-Za-z0-9_-]{3,20}$/.test(v)?null:'کد باید ۳ تا ۲۰ حرف انگلیسی یا عدد باشه (بدون فاصله)'},
-      {key:'type',type:'seg',label:'نوع تخفیف',options:[{value:'percent',label:'٪ درصدی'},{value:'fixed',label:'💰 مبلغ ثابت'}],value:'percent'},
+      {key:'type',type:'seg',label:'نوع تخفیف',options:[{value:'percent',label:'٪ درصدی'},{value:'fixed',label:'مبلغ ثابت'}],value:'percent'},
       {key:'value',type:'number',label:'درصد تخفیف (۱ تا ۹۹)',labelFn:(v)=>v.type==='percent'?'درصد تخفیف (۱ تا ۹۹)':'مبلغ تخفیف (تومان)',min:1,
         validate:(val,all)=> (all.type==='percent' && val>99) ? 'درصد تخفیف حداکثر ۹۹ می‌تونه باشه' : null},
       {key:'expiry',type:'date',label:'تاریخ انقضا (اختیاری)',required:false,minToday:true},
       {key:'limit',type:'number',label:'حداکثر تعداد استفاده (اختیاری)',required:false,min:1,hint:'خالی بذارید یعنی نامحدود'},
     ],
-    submitText:'➕ ساخت کد تخفیف',
+    submitText:'ساخت کد تخفیف',
     onSubmit: async(v)=>{
       await api(`/api/admin/${adminBizId}/discounts`,{method:'POST',body:{code:v.code.toUpperCase(),discount_type:v.type,value:v.value,expiry_date:v.expiry||null,usage_limit:v.limit}});
       toast('کد تخفیف ساخته شد ✅'); backFn();
@@ -751,12 +990,12 @@ function openScheduleForm(dayIdx,dayName,row){
   showForm({
     title:'برنامه کاری '+dayName, subtitle:'ساعت کاری این روز هفته',
     fields:[
-      {key:'state',type:'seg',label:'وضعیت',options:[{value:'open',label:'🟢 باز است'},{value:'closed',label:'🔴 تعطیل است'}],value:closed?'closed':'open'},
+      {key:'state',type:'seg',label:'وضعیت',options:[{value:'open',label:'باز است'},{value:'closed',label:'تعطیل است'}],value:closed?'closed':'open'},
       {key:'start',type:'time',label:'ساعت شروع',value:(row&&row.start_time)||'09:00',showIf:(v)=>v.state==='open',required:true},
       {key:'end',type:'time',label:'ساعت پایان',value:(row&&row.end_time)||'20:00',showIf:(v)=>v.state==='open',required:true,
         validate:(val,all)=> all.state==='open' && all.start && val<=all.start ? 'ساعت پایان باید بعد از ساعت شروع باشه' : null},
     ],
-    submitText:'💾 ذخیره',
+    submitText:'ذخیره',
     onSubmit: async(v)=>{
       const body = v.state==='closed' ? {weekday:dayIdx,is_closed:true} : {weekday:dayIdx,start_time:v.start,end_time:v.end,is_closed:false};
       await api(`/api/admin/${adminBizId}/schedule`,{method:'POST',body}); toast('ذخیره شد ✅'); backFn();
@@ -767,20 +1006,20 @@ function openScheduleForm(dayIdx,dayName,row){
 
 function showInviteCode(code){
   hT.textContent='🎫 کد دعوت ادمین'; hS.textContent='این کد فقط یک‌بار قابل استفاده‌ست';
-  main.innerHTML=''; foot.innerHTML='';
+  main.innerHTML=''; clearFoot();
   const cmd='/claimadmin '+code;
   main.appendChild(el('<div class="sub" style="margin-bottom:8px">این دستور رو برای فرد مورد نظر بفرستید تا توی چت ربات بزنه:</div>'));
   const box=el('<div class="link-box" style="font-size:16px;text-align:center;direction:ltr"></div>'); box.textContent=cmd; main.appendChild(box);
-  foot.appendChild(btn('📋 کپی دستور',()=>{ try{ navigator.clipboard.writeText(cmd); toast('کپی شد ✅'); }catch(e){ toast(cmd); } }));
-  foot.appendChild(btn('⬅️ بازگشت',()=>{ aScreen='admins'; renderAdmin(); },'ghost'));
+  foot.appendChild(btn('کپی دستور',()=>{ try{ navigator.clipboard.writeText(cmd); toast('کپی شد ✅'); }catch(e){ toast(cmd); } }));
+  foot.appendChild(btn('بازگشت',()=>{ aScreen='admins'; renderAdmin(); },'ghost'));
 }
 
 // ================= کسب‌وکارهای من + مسیریابی ورود =================
 function showMyBusinesses(list){
   hT.textContent='کسب‌وکارهای من'; hS.textContent='یکی رو برای مدیریت انتخاب کنید';
-  main.innerHTML=''; foot.innerHTML='';
-  list.forEach(b=>main.appendChild(card((b.category?'':'')+b.name, b.category||null, null, ()=>startAdmin(b.id))));
-  foot.appendChild(btn('➕ ساخت کسب‌وکار جدید',()=>showCategoryPicker(()=>showMyBusinesses(list))));
+  main.innerHTML=''; clearFoot();
+  list.forEach(b=>main.appendChild(iconCard('briefcase','blue',b.name, b.category||'', ()=>startAdmin(b.id))));
+  foot.appendChild(btn('ساخت کسب‌وکار جدید',()=>showCategoryPicker(()=>showMyBusinesses(list))));
 }
 
 // ورود از دکمه‌ی Open (بدون لینک خاص):

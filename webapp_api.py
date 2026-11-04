@@ -454,6 +454,7 @@ def admin_dashboard(business_id: int, x_telegram_init_data: str = Header(default
     return {
         "business_name": biz["name"], "slug": biz["slug"], "shop_datetime": bool(biz.get("shop_datetime", 0)),
         "category": biz.get("category"), "has_staff": has_staff,
+        "customer_count": part(lambda: db.count_customers(business_id), 0),
         "today_count": today_count, "upcoming_count": upcoming_count,
         "month_revenue": month_row["revenue"], "month_count": month_row["cnt"],
         "avg_rating": avg, "review_count": cnt,
@@ -483,6 +484,15 @@ def admin_cancel(business_id: int, appointment_id: int, x_telegram_init_data: st
 def admin_orders_today(business_id: int, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
     orders = rows(db.get_orders_by_date(business_id, datetime.now().strftime("%Y-%m-%d")))
+    for o in orders:
+        o["items"] = rows(db.get_order_items(o["id"]))
+    return orders
+
+
+@app.get("/api/admin/{business_id}/orders/recent")
+def admin_orders_recent(business_id: int, x_telegram_init_data: str = Header(default="")):
+    u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
+    orders = rows(db.get_recent_orders(business_id))
     for o in orders:
         o["items"] = rows(db.get_order_items(o["id"]))
     return orders

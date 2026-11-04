@@ -1274,6 +1274,20 @@ def create_order(business_id, customer_id, user_id, user_name, user_phone, deliv
         return order_id
 
 
+def count_customers(business_id):
+    with get_conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM customers WHERE business_id = ?", (business_id,)).fetchone()[0]
+
+
+def get_recent_orders(business_id, limit=8):
+    """آخرین سفارش‌های ثبت‌شده (شامل لغوشده‌ها) برای بخش «فعالیت‌های اخیر» داشبورد."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM orders WHERE business_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (business_id, limit),
+        ).fetchall()
+
+
 def get_order(order_id):
     with get_conn() as conn:
         return conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
