@@ -86,7 +86,8 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, appt_id, rating = query.data.split("_")
     appt_id, rating = int(appt_id), int(rating)
     appt = db.get_appointment(appt_id)
-    if not appt:
+    # فقط صاحب همون نوبت می‌تونه بهش امتیاز بده
+    if not appt or appt["user_id"] != update.effective_user.id or not 1 <= rating <= 5:
         await query.edit_message_text("این نوبت یافت نشد.")
         return
     db.add_review(appt_id, appt["business_id"], update.effective_user.id, rating)
@@ -102,7 +103,8 @@ async def handle_order_rating(update: Update, context: ContextTypes.DEFAULT_TYPE
     _, order_id, rating = query.data.split("_")
     order_id, rating = int(order_id), int(rating)
     order = db.get_order(order_id)
-    if not order:
+    # فقط صاحب همون سفارش می‌تونه بهش امتیاز بده
+    if not order or order["user_id"] != update.effective_user.id or not 1 <= rating <= 5:
         await query.edit_message_text("این سفارش یافت نشد.")
         return
     db.add_order_review(order_id, order["business_id"], update.effective_user.id, rating)

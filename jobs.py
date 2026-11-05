@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 
 import database as db
 import backup
-from config import REMINDER_CHECK_INTERVAL_SECONDS, REMINDER_24H_WINDOW_MINUTES, REMINDER_1H_WINDOW_MINUTES, LOYALTY_TOMAN_PER_POINT
+from config import REMINDER_CHECK_INTERVAL_SECONDS, REMINDER_24H_WINDOW_MINUTES, REMINDER_1H_WINDOW_MINUTES, LOYALTY_TOMAN_PER_POINT, local_now
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def _appt_datetime(appt):
 
 
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
+    now = local_now()
     for appt in db.get_due_reminder_candidates():
         try:
             appt_dt = _appt_datetime(appt)
@@ -64,7 +64,7 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def complete_past_appointments(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
+    now = local_now()
     for appt in db.get_completable_appointments():
         try:
             end_dt = datetime.strptime(f"{appt['date']} {appt['end_time']}", "%Y-%m-%d %H:%M")
@@ -98,7 +98,7 @@ def _order_datetime(order):
 
 
 async def complete_past_orders(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
+    now = local_now()
     for order in db.get_completable_orders():
         try:
             order_dt = _order_datetime(order)
@@ -129,7 +129,7 @@ async def prompt_order_reviews(context: ContextTypes.DEFAULT_TYPE):
 
 async def send_order_reminders(context: ContextTypes.DEFAULT_TYPE):
     """یادآوری ۲۴ ساعته و ۱ ساعته برای سفارش‌های زمان‌دار (سفارش‌های بدون تاریخ/ساعت یادآوری ندارن)."""
-    now = datetime.now()
+    now = local_now()
     for o in db.get_order_reminder_candidates():
         try:
             dt = datetime.strptime(f"{o['delivery_date']} {o['delivery_time']}", "%Y-%m-%d %H:%M")
