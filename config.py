@@ -1,4 +1,16 @@
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# منطقه‌ی زمانی کسب‌وکارها. سرورهایی مثل Render با ساعت UTC کار می‌کنن،
+# پس همه‌جا به جای datetime.now() از local_now() استفاده می‌کنیم تا ساعت‌ها به وقت ایران باشن.
+APP_TIMEZONE = ZoneInfo(os.getenv("APP_TIMEZONE", "Asia/Tehran"))
+
+
+def local_now():
+    """زمان فعلی به وقت محلی کسب‌وکار (بدون tzinfo، تا با تاریخ/ساعت‌های ذخیره‌شده قابل مقایسه باشه)."""
+    return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT-YOUR-BOT-TOKEN-HERE")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "YourBotUsername")  # بدون @ - برای ساخت لینک اشتراک‌گذاری
@@ -35,6 +47,10 @@ LOYALTY_TOMAN_PER_POINT = 10000
 LOYALTY_POINT_VALUE_TOMAN = 1000
 # حداقل امتیاز لازم برای استفاده
 LOYALTY_MIN_REDEEM = 10
+
+# --- دعوت ادمین ---
+# کد دعوت ادمین بعد از این تعداد روز منقضی می‌شه
+ADMIN_INVITE_VALID_DAYS = 7
 
 # --- یادآوری ---
 REMINDER_CHECK_INTERVAL_SECONDS = 300  # هر ۵ دقیقه بررسی شود

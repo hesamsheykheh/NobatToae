@@ -3,14 +3,16 @@ import secrets
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
-from config import DB_PATH, DEFAULT_WORK_START_HOUR, DEFAULT_WORK_END_HOUR, SLOT_STEP_MINUTES
+from config import DB_PATH, DEFAULT_WORK_START_HOUR, DEFAULT_WORK_END_HOUR, SLOT_STEP_MINUTES, ADMIN_INVITE_VALID_DAYS, local_now
 
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout: اگه ربات و سرور هم‌زمان بنویسن، به جای خطای «database is locked» چند ثانیه صبر می‌کنه
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 15000")
     try:
         yield conn
         conn.commit()
@@ -273,7 +275,7 @@ def create_business(name, owner_id, mode="appointment", category=None):
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO businesses (slug, name, owner_id, mode, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (slug, name, owner_id, mode, category, datetime.now().isoformat()),
+            (slug, name, owner_id, mode, category, local_now().isoformat()),
         )
         biz_id = cur.lastrowid
         conn.execute(
@@ -352,7 +354,7 @@ def create_admin_invite(business_id, created_by):
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO admin_invites (business_id, code, created_by, created_at) VALUES (?, ?, ?, ?)",
-            (business_id, code, created_by, datetime.now().isoformat()),
+            (business_id, code, created_by, local_now().isoformat()),
         )
     return code
 
@@ -364,19 +366,28 @@ def get_admin_invite(code):
 
 def use_admin_invite(code, telegram_id):
     """اگر کد معتبر و استفاده‌نشده باشد، کاربر را ادمین می‌کند. خروجی: (ok, business_row یا None, پیام خطا)"""
-    invite = get_admin_invite(code)
+    invite = get_admin_invite((code or "").strip().lower())
     if not invite:
         return False, None, "❌ کد دعوت نامعتبر است."
     if invite["used"]:
         return False, None, "❌ این کد دعوت قبلاً استفاده شده."
+    try:
+        created = datetime.fromisoformat(invite["created_at"])
+    except (TypeError, ValueError):
+        created = None
+    if created is None or local_now() - created > timedelta(days=ADMIN_INVITE_VALID_DAYS):
+        return False, None, f"❌ این کد دعوت منقضی شده (اعتبار کدها {ADMIN_INVITE_VALID_DAYS} روزه). یه کد جدید بگیرید."
     business = get_business(invite["business_id"])
     if not business:
         return False, None, "❌ کسب‌وکار مربوطه یافت نشد."
-    add_business_admin(business["id"], telegram_id)
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE admin_invites SET used = 1, used_by = ? WHERE code = ?", (telegram_id, code)
+        # فقط یک نفر می‌تونه از هر کد استفاده کنه، حتی اگه دو نفر هم‌زمان بزنن
+        cur = conn.execute(
+            "UPDATE admin_invites SET used = 1, used_by = ? WHERE id = ? AND used = 0", (telegram_id, invite["id"])
         )
+        if not cur.rowcount:
+            return False, None, "❌ این کد دعوت قبلاً استفاده شده."
+    add_business_admin(business["id"], telegram_id)
     return True, business, "✅ شما با موفقیت ادمین این کسب‌وکار شدید."
 
 
@@ -487,6 +498,13 @@ def unlink_staff_service(staff_id, service_id):
         conn.execute(
             "DELETE FROM staff_services WHERE staff_id = ? AND service_id = ?", (staff_id, service_id)
         )
+
+
+def staff_offers_service(staff_id, service_id):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT 1 FROM staff_services WHERE staff_id = ? AND service_id = ?", (staff_id, service_id)
+        ).fetchone() is not None
 
 
 def link_staff_service(staff_id, service_id):
@@ -615,7 +633,7 @@ def get_holidays(business_id, upcoming_only=True):
         params = [business_id]
         if upcoming_only:
             q += " AND date >= ?"
-            params.append(datetime.now().strftime("%Y-%m-%d"))
+            params.append(local_now().strftime("%Y-%m-%d"))
         q += " ORDER BY date"
         return conn.execute(q, params).fetchall()
 
@@ -683,8 +701,8 @@ def get_available_slots(business_id, staff_id, date_str, duration_minutes):
 
     busy_ranges = [(_time_to_minutes(r["start_time"]), _time_to_minutes(r["end_time"])) for r in booked]
 
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    now_min = datetime.now().hour * 60 + datetime.now().minute
+    today_str = local_now().strftime("%Y-%m-%d")
+    now_min = local_now().hour * 60 + local_now().minute
     if date_str == today_str:
         start_min = max(start_min, ((now_min // SLOT_STEP_MINUTES) + 1) * SLOT_STEP_MINUTES)
 
@@ -710,8 +728,8 @@ def get_order_time_slots(business_id, date_str):
         return []
     start_min, end_min = hours
 
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    now_min = datetime.now().hour * 60 + datetime.now().minute
+    today_str = local_now().strftime("%Y-%m-%d")
+    now_min = local_now().hour * 60 + local_now().minute
     if date_str == today_str:
         start_min = max(start_min, ((now_min // SLOT_STEP_MINUTES) + 1) * SLOT_STEP_MINUTES)
 
@@ -739,14 +757,14 @@ def create_appointment(business_id, customer_id, user_id, user_name, user_phone,
             (
                 business_id, customer_id, user_id, user_name, user_phone, service_id, staff_id,
                 date_str, start_time, end_time, base_price, final_price, discount_code, points_redeemed,
-                datetime.now().isoformat(),
+                local_now().isoformat(),
             ),
         )
         return cur.lastrowid
 
 
 def get_user_upcoming_appointments(business_id, user_id):
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = local_now().strftime("%Y-%m-%d")
     with get_conn() as conn:
         return conn.execute(
             """
@@ -777,15 +795,39 @@ def get_user_past_appointments(business_id, user_id, limit=10):
         ).fetchall()
 
 
-def cancel_appointment(appointment_id, user_id=None):
+def cancel_appointment(appointment_id, user_id=None, business_id=None):
+    """نوبت رو لغو می‌کنه و امتیاز/کد تخفیف مصرف‌شده رو برمی‌گردونه.
+    user_id: فقط اگه نوبت مال همین کاربر باشه. business_id: فقط اگه نوبت مال همین کسب‌وکار باشه.
+    خروجی: True اگه واقعاً نوبتی لغو شد."""
+    sql = "SELECT * FROM appointments WHERE id = ? AND status = 'confirmed'"
+    params = [appointment_id]
+    if user_id is not None:
+        sql += " AND user_id = ?"
+        params.append(user_id)
+    if business_id is not None:
+        sql += " AND business_id = ?"
+        params.append(business_id)
     with get_conn() as conn:
-        if user_id is not None:
-            conn.execute(
-                "UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ?",
-                (appointment_id, user_id),
-            )
-        else:
-            conn.execute("UPDATE appointments SET status = 'cancelled' WHERE id = ?", (appointment_id,))
+        appt = conn.execute(sql, params).fetchone()
+        if not appt:
+            return False
+        cur = conn.execute(
+            "UPDATE appointments SET status = 'cancelled' WHERE id = ? AND status = 'confirmed'", (appointment_id,)
+        )
+        if cur.rowcount:
+            _refund_in_conn(conn, appt["business_id"], appt["customer_id"], appt["points_redeemed"], appt["discount_code"])
+        return cur.rowcount > 0
+
+
+def _refund_in_conn(conn, business_id, customer_id, points, discount_code):
+    """امتیاز وفاداری و ظرفیت کد تخفیفی که برای یه نوبت/سفارش لغوشده مصرف شده بود رو برمی‌گردونه."""
+    if customer_id and points:
+        conn.execute("UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ?", (points, customer_id))
+    if discount_code:
+        conn.execute(
+            "UPDATE discount_codes SET used_count = MAX(0, used_count - 1) WHERE business_id = ? AND code = ?",
+            (business_id, discount_code),
+        )
 
 
 def get_appointments_by_date(business_id, date_str):
@@ -804,7 +846,7 @@ def get_appointments_by_date(business_id, date_str):
 
 
 def get_all_upcoming_appointments(business_id):
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = local_now().strftime("%Y-%m-%d")
     with get_conn() as conn:
         return conn.execute(
             """
@@ -851,7 +893,7 @@ def get_all_appointments_for_export(business_id):
 
 def get_due_reminder_candidates(status="confirmed"):
     """تمام نوبت‌های آینده با وضعیت مشخص، برای بررسی یادآوری در جاب."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = local_now().strftime("%Y-%m-%d")
     with get_conn() as conn:
         return conn.execute(
             """
@@ -928,7 +970,7 @@ def get_pending_review_orders():
 
 
 def get_order_reminder_candidates():
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = local_now().strftime("%Y-%m-%d")
     with get_conn() as conn:
         return conn.execute(
             """
@@ -986,7 +1028,7 @@ def upsert_customer(business_id, telegram_id, name, phone):
             ON CONFLICT(business_id, telegram_id) DO UPDATE SET
                 name = excluded.name, phone = excluded.phone
             """,
-            (business_id, telegram_id, name, phone, datetime.now().isoformat()),
+            (business_id, telegram_id, name, phone, local_now().isoformat()),
         )
         return conn.execute(
             "SELECT * FROM customers WHERE business_id = ? AND telegram_id = ?", (business_id, telegram_id)
@@ -1073,14 +1115,15 @@ def validate_discount(business_id, code, base_price):
         return False, base_price, "❌ کد تخفیف نامعتبر است.", None
 
     if row["expiry_date"]:
-        if datetime.now().strftime("%Y-%m-%d") > row["expiry_date"]:
+        if local_now().strftime("%Y-%m-%d") > row["expiry_date"]:
             return False, base_price, "❌ این کد تخفیف منقضی شده.", None
 
     if row["usage_limit"] is not None and row["used_count"] >= row["usage_limit"]:
         return False, base_price, "❌ ظرفیت استفاده از این کد تمام شده.", None
 
     if row["discount_type"] == "percent":
-        final_price = int(base_price * (100 - row["value"]) / 100)
+        value = min(max(row["value"], 0), 100)
+        final_price = int(base_price * (100 - value) / 100)
     else:
         final_price = max(0, base_price - row["value"])
 
@@ -1098,7 +1141,7 @@ def add_review(appointment_id, business_id, telegram_id, rating, comment=None):
             INSERT OR IGNORE INTO reviews (appointment_id, business_id, telegram_id, rating, comment, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (appointment_id, business_id, telegram_id, rating, comment, datetime.now().isoformat()),
+            (appointment_id, business_id, telegram_id, rating, comment, local_now().isoformat()),
         )
 
 
@@ -1120,7 +1163,7 @@ def add_order_review(order_id, business_id, telegram_id, rating, comment=None):
             INSERT OR IGNORE INTO order_reviews (order_id, business_id, telegram_id, rating, comment, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (order_id, business_id, telegram_id, rating, comment, datetime.now().isoformat()),
+            (order_id, business_id, telegram_id, rating, comment, local_now().isoformat()),
         )
 
 
@@ -1168,7 +1211,7 @@ def add_feedback(business_id, telegram_id, user_name, text):
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO feedback (business_id, telegram_id, user_name, text, created_at) VALUES (?, ?, ?, ?, ?)",
-            (business_id, telegram_id, user_name, text, datetime.now().isoformat()),
+            (business_id, telegram_id, user_name, text, local_now().isoformat()),
         )
         return cur.lastrowid
 
@@ -1185,7 +1228,7 @@ def add_platform_feedback(business_id, telegram_id, user_name, text):
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO platform_feedback (business_id, telegram_id, user_name, text, created_at) VALUES (?, ?, ?, ?, ?)",
-            (business_id, telegram_id, user_name, text, datetime.now().isoformat()),
+            (business_id, telegram_id, user_name, text, local_now().isoformat()),
         )
         return cur.lastrowid
 
@@ -1262,7 +1305,7 @@ def create_order(business_id, customer_id, user_id, user_name, user_phone, deliv
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
             """,
             (business_id, customer_id, user_id, user_name, user_phone, staff_id, delivery_date, delivery_time,
-             end_time, total_price, discount_code, points_redeemed, 1 if scheduled else 0, datetime.now().isoformat()),
+             end_time, total_price, discount_code, points_redeemed, 1 if scheduled else 0, local_now().isoformat()),
         )
         order_id = cur.lastrowid
         for service_id, qty, unit_price in items:
@@ -1320,7 +1363,7 @@ def get_orders_by_date(business_id, date_str):
 
 
 def get_all_upcoming_orders(business_id):
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = local_now().strftime("%Y-%m-%d")
     with get_conn() as conn:
         return conn.execute(
             """
@@ -1335,7 +1378,7 @@ def get_all_upcoming_orders(business_id):
 
 
 def get_user_upcoming_orders(business_id, user_id):
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = local_now().strftime("%Y-%m-%d")
     with get_conn() as conn:
         return conn.execute(
             """
@@ -1348,13 +1391,29 @@ def get_user_upcoming_orders(business_id, user_id):
 
 
 def cancel_order(order_id, user_id=None):
+    """سفارش فعال رو لغو می‌کنه و امتیاز/کد تخفیف مصرف‌شده رو برمی‌گردونه. خروجی: True اگه لغو شد."""
+    return update_order_status(order_id, "cancelled", user_id=user_id)
+
+
+def update_order_status(order_id, status, user_id=None):
     with get_conn() as conn:
+        sql, params = "SELECT * FROM orders WHERE id = ?", [order_id]
         if user_id is not None:
-            conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ? AND user_id = ?", (order_id, user_id))
-        else:
-            conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
-
-
-def update_order_status(order_id, status):
-    with get_conn() as conn:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        order = conn.execute(sql, params).fetchone()
+        if not order:
+            return False
+        if status == "cancelled":
+            if order["status"] in ("cancelled", "completed"):
+                return False
+            cur = conn.execute(
+                "UPDATE orders SET status = 'cancelled' WHERE id = ? AND status NOT IN ('cancelled', 'completed')",
+                (order_id,),
+            )
+            if cur.rowcount:
+                _refund_in_conn(conn, order["business_id"], order["customer_id"],
+                                order["points_redeemed"], order["discount_code"])
+            return cur.rowcount > 0
         conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+        return True

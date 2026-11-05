@@ -13,6 +13,9 @@ import os
 import time
 import csv
 import io
+import math
+import re
+import threading
 from datetime import datetime, timedelta
 from urllib.parse import parse_qsl
 
@@ -40,7 +43,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 import database as db
-from config import BOT_TOKEN, BOT_USERNAME, LOYALTY_TOMAN_PER_POINT, LOYALTY_POINT_VALUE_TOMAN
+from config import (BOT_TOKEN, BOT_USERNAME, LOYALTY_TOMAN_PER_POINT, LOYALTY_POINT_VALUE_TOMAN,
+                    LOYALTY_MIN_REDEEM, local_now)
 
 API_VERSION = "3.2"
 app = FastAPI(title="Salon Bot Mini App API")
@@ -51,7 +55,8 @@ logger = logging.getLogger("webapp_api")
 async def unhandled_error(request, exc):
     """خطای پیش‌بینی‌نشده‌ی سرور: توی لاگ ثبت می‌شه و یه پیام قابل‌فهم (JSON) برمی‌گرده، نه صفحه‌ی خالی."""
     logger.exception("خطای پیش‌بینی‌نشده در %s", getattr(request, "url", ""))
-    detail = "خطای داخلی سرور" if os.getenv("HIDE_ERRORS") == "1" else f"خطای داخلی سرور ({type(exc).__name__}: {exc})"
+    # جزئیات فنی خطا فقط وقتی نشون داده می‌شه که خودتون SHOW_ERRORS=1 رو ست کرده باشید (برای دیباگ)
+    detail = f"خطای داخلی سرور ({type(exc).__name__}: {exc})" if os.getenv("SHOW_ERRORS") == "1" else "خطای داخلی سرور"
     return JSONResponse(status_code=500, content={"detail": detail})
 db.init_db()
 
@@ -93,6 +98,29 @@ def require_admin(business_id: int, user: dict) -> dict:
     if not business:
         raise HTTPException(404, "کسب‌وکار یافت نشد")
     return dict(business)
+
+
+# قفل رزرو: «چک خالی بودن ساعت» و «ثبت نوبت» باید با هم و بدون وقفه انجام بشن،
+# وگرنه دو نفر که هم‌زمان یه ساعت رو بزنن، هر دو ثبت می‌شن.
+# (این قفل داخل یک پروسه کار می‌کنه؛ سرور رو با یک worker اجرا کنید، همون‌طور که run_all.py می‌کنه.)
+_booking_lock = threading.Lock()
+
+
+def apply_loyalty_points(customer, price):
+    """فقط به اندازه‌ی لازم امتیاز خرج می‌کنه (نه همه‌ی امتیازها). خروجی: (امتیاز مصرفی، قیمت نهایی)"""
+    points = customer["loyalty_points"] or 0
+    if price is None or price <= 0 or points < LOYALTY_MIN_REDEEM:
+        return 0, price
+    needed = math.ceil(price / LOYALTY_POINT_VALUE_TOMAN)
+    used = min(points, needed)
+    return used, max(0, price - used * LOYALTY_POINT_VALUE_TOMAN)
+
+
+def validate_phone(phone: str) -> str:
+    phone = (phone or "").strip()
+    if len(re.sub(r"\D", "", phone)) < 10 or len(phone) > 20:
+        raise HTTPException(400, "شماره تماس معتبر وارد کنید")
+    return phone
 
 
 def row(r):
@@ -224,9 +252,25 @@ class CreateAppointmentBody(BaseModel):
 @app.post("/api/appointments")
 def create_appointment(body: CreateAppointmentBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data)
+    with _booking_lock:
+        return _create_appointment(body, u)
+
+
+def _create_appointment(body: CreateAppointmentBody, u: dict):
+    body.phone = validate_phone(body.phone)
     service = db.get_service(body.service_id)
-    if not service:
+    # خدمت باید مال همین کسب‌وکار و فعال باشه
+    if not service or service["business_id"] != body.business_id or not service["active"]:
         raise HTTPException(404, "خدمت یافت نشد")
+    if body.staff_id is not None:
+        staff = db.get_staff_member(body.staff_id)
+        if not staff or staff["business_id"] != body.business_id or not staff["active"]:
+            raise HTTPException(400, "متخصص نامعتبر")
+        if not db.staff_offers_service(body.staff_id, body.service_id):
+            raise HTTPException(400, "این متخصص این خدمت رو انجام نمی‌ده")
+    elif db.get_staff_for_service(body.service_id):
+        # اگه این خدمت متخصص داره، رزرو بدون متخصص تداخل‌ها رو دور می‌زنه
+        raise HTTPException(400, "لطفاً متخصص رو انتخاب کنید")
 
     slots = db.get_available_slots(body.business_id, body.staff_id, body.date, service["duration_minutes"])
     if body.time not in slots:
@@ -245,10 +289,10 @@ def create_appointment(body: CreateAppointmentBody, x_telegram_init_data: str = 
 
     customer = db.upsert_customer(body.business_id, u["id"], body.name or u.get("first_name", ""), body.phone)
     points_redeemed = 0
-    if body.use_points and has_price and customer["loyalty_points"] > 0:
-        points_redeemed = customer["loyalty_points"]
-        final_price = max(0, final_price - points_redeemed * LOYALTY_POINT_VALUE_TOMAN)
-        db.redeem_loyalty_points(customer["id"], points_redeemed)
+    if body.use_points and has_price:
+        points_redeemed, final_price = apply_loyalty_points(customer, final_price)
+        if points_redeemed:
+            db.redeem_loyalty_points(customer["id"], points_redeemed)
     if discount_code_id:
         db.increment_discount_usage(discount_code_id)
 
@@ -330,6 +374,12 @@ def public_staff_list(business_id: int):
 @app.post("/api/orders")
 def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data)
+    with _booking_lock:
+        return _create_order(body, u)
+
+
+def _create_order(body: CreateOrderBody, u: dict):
+    body.phone = validate_phone(body.phone)
     if not body.items:
         raise HTTPException(400, "سبد خرید خالی است")
 
@@ -346,7 +396,7 @@ def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(defau
         if it.quantity <= 0:
             continue
         svc = db.get_service(it.service_id)
-        if not svc or svc["business_id"] != body.business_id:
+        if not svc or svc["business_id"] != body.business_id or not svc["active"]:
             raise HTTPException(400, f"آیتم نامعتبر: {it.service_id}")
         kinds.add(svc["kind"])
         price = svc["price"]
@@ -371,12 +421,12 @@ def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(defau
         delivery_date, delivery_time = body.delivery_date, body.delivery_time
         staff_id = body.staff_id if kind == "service" else None
     else:
-        delivery_date, delivery_time, staff_id = datetime.now().strftime("%Y-%m-%d"), "00:00", None
+        delivery_date, delivery_time, staff_id = local_now().strftime("%Y-%m-%d"), "00:00", None
 
     # اگه متخصص انتخاب شده، باید همون زمان واقعاً هنوز خالی باشه (چک تداخل)
     if staff_id:
         staff = db.get_staff_member(staff_id)
-        if not staff or staff["business_id"] != body.business_id:
+        if not staff or staff["business_id"] != body.business_id or not staff["active"]:
             raise HTTPException(400, "متخصص نامعتبر")
         duration_for_check = max(total_duration, 1)
         slots = db.get_available_slots(body.business_id, staff_id, delivery_date, duration_for_check)
@@ -393,10 +443,10 @@ def create_order(body: CreateOrderBody, x_telegram_init_data: str = Header(defau
 
     customer = db.upsert_customer(body.business_id, u["id"], body.name or u.get("first_name", ""), body.phone)
     points_redeemed = 0
-    if body.use_points and customer["loyalty_points"] > 0 and final_price is not None:
-        points_redeemed = customer["loyalty_points"]
-        final_price = max(0, final_price - points_redeemed * LOYALTY_POINT_VALUE_TOMAN)
-        db.redeem_loyalty_points(customer["id"], points_redeemed)
+    if body.use_points and final_price is not None:
+        points_redeemed, final_price = apply_loyalty_points(customer, final_price)
+        if points_redeemed:
+            db.redeem_loyalty_points(customer["id"], points_redeemed)
     if discount_code_id:
         db.increment_discount_usage(discount_code_id)
 
@@ -434,9 +484,9 @@ def cancel_my_order(order_id: int, x_telegram_init_data: str = Header(default=""
 def admin_dashboard(business_id: int, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data)
     biz = require_admin(business_id, u)
-    today = datetime.now().strftime("%Y-%m-%d")
-    week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
-    month_start = datetime.now().strftime("%Y-%m-01")
+    today = local_now().strftime("%Y-%m-%d")
+    week_start = (local_now() - timedelta(days=local_now().weekday())).strftime("%Y-%m-%d")
+    month_start = local_now().strftime("%Y-%m-01")
     def part(fn, default):
         # خرابی یه آمار نباید کل پنل مدیریت رو از کار بندازه
         try:
@@ -464,7 +514,7 @@ def admin_dashboard(business_id: int, x_telegram_init_data: str = Header(default
 @app.get("/api/admin/{business_id}/appointments/today")
 def admin_today(business_id: int, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    return rows(db.get_appointments_by_date(business_id, datetime.now().strftime("%Y-%m-%d")))
+    return rows(db.get_appointments_by_date(business_id, local_now().strftime("%Y-%m-%d")))
 
 
 @app.get("/api/admin/{business_id}/appointments/upcoming")
@@ -476,14 +526,16 @@ def admin_upcoming(business_id: int, x_telegram_init_data: str = Header(default=
 @app.post("/api/admin/{business_id}/appointments/{appointment_id}/cancel")
 def admin_cancel(business_id: int, appointment_id: int, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    db.cancel_appointment(appointment_id)
+    # فقط نوبت‌های همین کسب‌وکار قابل لغو هستن
+    if not db.cancel_appointment(appointment_id, business_id=business_id):
+        raise HTTPException(404, "نوبت یافت نشد یا قبلاً لغو شده")
     return {"ok": True}
 
 
 @app.get("/api/admin/{business_id}/orders/today")
 def admin_orders_today(business_id: int, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    orders = rows(db.get_orders_by_date(business_id, datetime.now().strftime("%Y-%m-%d")))
+    orders = rows(db.get_orders_by_date(business_id, local_now().strftime("%Y-%m-%d")))
     for o in orders:
         o["items"] = rows(db.get_order_items(o["id"]))
     return orders
@@ -521,6 +573,12 @@ def admin_update_order_status(business_id: int, order_id: int, body: OrderStatus
     if not order or order["business_id"] != business_id:
         raise HTTPException(404, "سفارش یافت نشد")
     # تحویل دستی (مثل سفارش‌های فروشگاه) هم باید امتیاز وفاداری بده، درست مثل تکمیل خودکار
+    if order["status"] == "cancelled" and body.status != "cancelled":
+        raise HTTPException(400, "سفارش لغوشده قابل تغییر نیست")
+    if body.status == "cancelled":
+        if not db.update_order_status(order_id, "cancelled"):
+            raise HTTPException(400, "این سفارش قابل لغو نیست")
+        return {"ok": True}
     if body.status == "completed" and order["status"] != "completed" and order["customer_id"] and order["total_price"] is not None:
         points = order["total_price"] // LOYALTY_TOMAN_PER_POINT
         if points > 0:
@@ -643,6 +701,9 @@ def admin_toggle_staff_service(staff_id: int, service_id: int, x_telegram_init_d
     if not s:
         raise HTTPException(404)
     require_admin(s["business_id"], u)
+    svc = db.get_service(service_id)
+    if not svc or svc["business_id"] != s["business_id"]:
+        raise HTTPException(404, "خدمت یافت نشد")
     linked = {x["id"] for x in db.get_services_for_staff(staff_id)}
     if service_id in linked:
         db.unlink_staff_service(staff_id, service_id)
@@ -727,6 +788,19 @@ def admin_list_discounts(business_id: int, x_telegram_init_data: str = Header(de
 @app.post("/api/admin/{business_id}/discounts")
 def admin_add_discount(business_id: int, body: DiscountBody, x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
+    body.code = (body.code or "").strip()
+    if not body.code or len(body.code) > 32:
+        raise HTTPException(400, "کد تخفیف نامعتبر است")
+    if body.discount_type not in ("percent", "fixed"):
+        raise HTTPException(400, "نوع تخفیف نامعتبر است")
+    if body.discount_type == "percent" and not (1 <= body.value <= 100):
+        raise HTTPException(400, "درصد تخفیف باید بین ۱ تا ۱۰۰ باشه")
+    if body.discount_type == "fixed" and body.value <= 0:
+        raise HTTPException(400, "مبلغ تخفیف باید بیشتر از صفر باشه")
+    if body.usage_limit is not None and body.usage_limit < 1:
+        raise HTTPException(400, "سقف استفاده باید حداقل ۱ باشه")
+    if db.get_discount_code(business_id, body.code):
+        raise HTTPException(400, "این کد تخفیف از قبل وجود داره")
     did = db.create_discount_code(business_id, body.code, body.discount_type, body.value, body.expiry_date, body.usage_limit)
     return {"id": did}
 
@@ -743,7 +817,7 @@ def admin_reviews(business_id: int, x_telegram_init_data: str = Header(default="
 @app.get("/api/admin/{business_id}/revenue")
 def admin_revenue(business_id: int, period: str = "month", x_telegram_init_data: str = Header(default="")):
     u = validate_init_data(x_telegram_init_data); require_admin(business_id, u)
-    today = datetime.now()
+    today = local_now()
     if period == "today":
         date_from = date_to = today.strftime("%Y-%m-%d")
     elif period == "week":
